@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import sqlite3
 from collections import Counter
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -197,6 +198,440 @@ def get_status() -> dict[str, object]:
         "susceptibility_scores": "AVAILABLE",
         "scenario_engine": "AVAILABLE",
         "warning": "Demonstration spatial susceptibility ranking, not live operational flood/landslide predictions or calibrated probabilities.",
+    }
+
+
+def _read_coverage_csv(path: Path) -> list[dict[str, str]] | None:
+    try:
+        return read_csv(path)
+    except OSError:
+        return None
+
+
+def _system_coverage_snapshot() -> dict[str, object]:
+    from backend.app import sensor_store, shelter_service
+    from backend.app.data_catalog import DATA_SOURCE_BY_ID, source_status
+
+    master = _read_coverage_csv(DATA / "processed/nilgiris_villages.csv")
+    model_rows = _read_coverage_csv(
+        DATA / "processed/ml_village_susceptibility_scores.csv"
+    )
+    experimental_rows = _read_coverage_csv(
+        DATA / "processed/experimental_hazard_index.csv"
+    )
+    hydro_rows = _read_coverage_csv(
+        DATA / "processed/hydrology/village_hydrology_features.csv"
+    )
+    terrain_rows = _read_coverage_csv(
+        DATA / "processed/terrain_features_villages.csv"
+    )
+    rainfall_rows = _read_coverage_csv(
+        DATA / "processed/ml_spatial_dataset.csv"
+    )
+    event_rows = _read_coverage_csv(DATA / "processed/landslide_events.csv")
+
+    def codes(rows: list[dict[str, str]] | None) -> set[str]:
+        return {
+            row["village_lgd_code"].strip()
+            for row in (rows or [])
+            if row.get("village_lgd_code", "").strip()
+        }
+
+    model_codes = codes(model_rows)
+    hydro_codes = codes(hydro_rows)
+    terrain_codes = codes(terrain_rows)
+    rainfall_codes = codes(rainfall_rows)
+    try:
+        sensor_records = sensor_store.list_sensors()
+        sensor_storage_status = "available"
+        sensor_reason = None
+    except (OSError, sqlite3.Error) as error:
+        sensor_records = []
+        sensor_storage_status = "unavailable"
+        sensor_reason = str(error)
+    real_sensors = [sensor for sensor in sensor_records if not sensor["is_test"]]
+    online_real_sensors = [
+        sensor for sensor in real_sensors if sensor["status"] == "online"
+    ]
+    test_sensors = [sensor for sensor in sensor_records if sensor["is_test"]]
+    if sensor_storage_status != "available" or not real_sensors:
+        sensor_data_status = "unavailable"
+        sensor_data_reason = (
+            sensor_reason
+            or "No non-test soil-moisture sensors are registered."
+        )
+    elif online_real_sensors:
+        sensor_data_status = "available"
+        sensor_data_reason = None
+    else:
+        sensor_data_status = "degraded"
+        sensor_data_reason = "Real sensors are registered, but none currently report online."
+
+    try:
+        shelter_data = shelter_service.shelter_coverage()
+        shelter_status = (
+            "available"
+            if shelter_data["route_eligible_records"] > 0
+            else "unavailable"
+        )
+        shelter_reason = (
+            None
+            if shelter_data["route_eligible_records"] > 0
+            else "No verified, operational shelter records are available."
+        )
+    except (OSError, RuntimeError, ValueError, KeyError) as error:
+        shelter_data = None
+        shelter_status = "unavailable"
+        shelter_reason = str(error)
+
+    total_villages = len(master) if master is not None else None
+    model_count = len(model_rows) if model_rows is not None else None
+    hydrology_count = len(hydro_rows) if hydro_rows is not None else None
+    boundary_count = (
+        len(model_codes)
+        if model_rows is not None
+        and (DATA / "raw/admin/vb_soi_tn.kmz").is_file()
+        else None
+    )
+    boundary_status = "available" if boundary_count is not None else "unavailable"
+    hydrology_status = source_status(DATA_SOURCE_BY_ID["hydrology"]).value
+    model_artifact_available = (
+        (ROOT / "model/artifacts/spatial_susceptibility_xgboost.json").is_file()
+        and (ROOT / "model/artifacts/spatial_validation_metrics.json").is_file()
+    )
+    warning_ready = (
+        model_rows is not None
+        and model_artifact_available
+        and hydrology_status == "available"
+        and sensor_storage_status == "available"
+    )
+    warning_status = "available" if warning_ready else "unavailable"
+    warning_reason = (
+        None
+        if warning_ready
+        else "One or more model, hydrology, or sensor-store dependencies are unavailable."
+    )
+    warning_coverage = (
+        {
+            "supported_village_count": model_count,
+            "total_village_master_count": total_villages,
+        }
+        if warning_ready
+        else None
+    )
+    coverage = {
+        "village_master": {
+            "total": total_villages,
+            "status": "available" if master is not None else "unavailable",
+            "source": "data/processed/nilgiris_villages.csv",
+        },
+        "village_boundaries": {
+            "validated_model_polygons": boundary_count,
+            "status": boundary_status,
+            "source": "SOI KMZ boundary subset represented in the validated model population",
+        },
+        "model": {
+            "supported_villages": model_count,
+            "coverage_percent": (
+                round(model_count / total_villages * 100, 1)
+                if model_count is not None and total_villages
+                else None
+            ),
+            "status": (
+                "available"
+                if model_rows is not None and model_artifact_available
+                else "unavailable"
+            ),
+            "artifact_available": model_artifact_available,
+            "lazy_loaded": ml_model.cache_info().currsize > 0,
+            "source": "model/artifacts/spatial_susceptibility_xgboost.json",
+        },
+        "experimental_hazard_index": {
+            "records": len(experimental_rows) if experimental_rows is not None else None,
+            "status": "available" if experimental_rows is not None else "unavailable",
+            "classification": "descriptive_not_ML_not_prediction",
+        },
+        "terrain": {
+            "supported_villages": len(terrain_codes) if terrain_rows is not None else None,
+            "status": "available" if terrain_rows is not None else "unavailable",
+            "source": "SRTM-derived terrain features",
+        },
+        "hydrology": {
+            "supported_villages": hydrology_count,
+            "model_villages_matched": len(model_codes & hydro_codes),
+            "status": hydrology_status,
+            "source": "DEM-derived offline hydrology products",
+        },
+        "historical_rainfall": {
+            "supported_villages": len(rainfall_codes) if rainfall_rows is not None else None,
+            "status": "available" if rainfall_rows is not None else "unavailable",
+            "source": "IMD-derived historical rainfall features in the model-ready table",
+        },
+        "historical_events": {
+            "records": len(event_rows) if event_rows is not None else None,
+            "status": "available" if event_rows is not None else "unavailable",
+            "source": "GSI/NLFC standalone event inventory",
+        },
+        "warnings": {
+            "supported_villages": (
+                warning_coverage["supported_village_count"]
+                if warning_coverage
+                else None
+            ),
+            "status": warning_status,
+            "reason": warning_reason,
+        },
+        "current_rainfall": {
+            "status": "unavailable",
+            "reason": "No validated current rainfall feed is configured.",
+        },
+        "rainfall_scenario": {
+            "status": (
+                "available"
+                if model_rows is not None and model_artifact_available
+                else "unavailable"
+            ),
+            "classification": "simulated",
+            "model_population": model_count,
+        },
+        "weather": {
+            "status": "available",
+            "provider": "Open-Meteo",
+            "classification": "contextual_only",
+            "health_check": "not_probed",
+        },
+        "sensors": {
+            "storage_status": sensor_storage_status,
+            "storage_reason": sensor_reason,
+            "status": sensor_data_status,
+            "reason": sensor_data_reason,
+            "registered_real": len(real_sensors),
+            "online_real": len(online_real_sensors),
+            "registered_test": len(test_sensors),
+            "physical_validation": "pending",
+        },
+        "shelters": {
+            "status": shelter_status,
+            "reason": shelter_reason,
+            "total_records": (
+                shelter_data["total_records"] if shelter_data else None
+            ),
+            "verified_records": shelter_data["verified"] if shelter_data else None,
+            "route_eligible": (
+                shelter_data["route_eligible_records"] if shelter_data else None
+            ),
+        },
+    }
+
+    def feature(
+        name: str,
+        status: str,
+        source: str,
+        covered: object,
+        limitation: str,
+    ) -> dict[str, object]:
+        return {
+            "feature": name,
+            "status": status,
+            "source": source,
+            "coverage": covered,
+            "limitation": limitation,
+        }
+
+    feature_audit = [
+        feature(
+            "Village master and boundaries",
+            "partial" if boundary_count is not None and total_villages != boundary_count else boundary_status,
+            "LGD village master + SOI KMZ",
+            f"{boundary_count if boundary_count is not None else 'unknown'} validated model polygons / "
+            f"{total_villages if total_villages is not None else 'unknown'} master records",
+            "Unmatched master and boundary records are not inferred or joined.",
+        ),
+        feature(
+            "Baseline susceptibility model",
+            str(coverage["model"]["status"]),
+            "PU-weighted XGBoost; spatial validation artifact",
+            f"{model_count if model_count is not None else 'unknown'} supported villages",
+            "Positive/unlabeled proxy; no verified negatives or calibrated probabilities.",
+        ),
+        feature(
+            "Experimental hazard index",
+            str(coverage["experimental_hazard_index"]["status"]),
+            "Fixed-method descriptive index artifact",
+            f"{coverage['experimental_hazard_index']['records'] if experimental_rows is not None else 'unknown'} records",
+            "Descriptive demonstration only; not ML, a prediction, or a warning.",
+        ),
+        feature(
+            "Terrain",
+            str(coverage["terrain"]["status"]),
+            "SRTM-derived terrain feature table",
+            f"{len(terrain_codes) if terrain_rows is not None else 'unknown'} villages",
+            "Offline-derived coverage only; not a live sensor measurement.",
+        ),
+        feature(
+            "Hydrology",
+            hydrology_status,
+            "DEM-derived offline hydrology products",
+            f"{hydrology_count if hydrology_count is not None else 'unknown'} villages; "
+            f"{len(model_codes & hydro_codes)} model villages joined",
+            "Terrain-derived context, not observed flow or flood extent.",
+        ),
+        feature(
+            "Historical rainfall",
+            str(coverage["historical_rainfall"]["status"]),
+            "IMD-derived historical features in the model-ready table",
+            f"{len(rainfall_codes) if rainfall_rows is not None else 'unknown'} villages",
+            "Historical features do not represent current rainfall conditions.",
+        ),
+        feature(
+            "Historical event evidence",
+            str(coverage["historical_events"]["status"]),
+            "GSI/NLFC event inventory",
+            f"{len(event_rows) if event_rows is not None else 'unknown'} standalone records",
+            "Events are evidence points; they are not automatically village assignments.",
+        ),
+        feature(
+            "Current rainfall",
+            "unavailable",
+            "No validated current rainfall provider",
+            "No live coverage",
+            "Rainfall scenarios are simulations and must not be read as observations.",
+        ),
+        feature(
+            "Rainfall Scenario",
+            str(coverage["rainfall_scenario"]["status"]),
+            "On-demand in-memory model feature simulation",
+            f"{model_count if model_count is not None else 'unknown'} model villages",
+            "Simulated input only; not current rainfall or a forecast.",
+        ),
+        feature(
+            "Weather context",
+            str(coverage["weather"]["status"]),
+            "Open-Meteo browser integration",
+            "District/village context when the provider responds",
+            "Context only; not an input to the susceptibility model.",
+        ),
+        feature(
+            "Soil-moisture sensors",
+            sensor_data_status,
+            "Optional ESP32 registration and local SQLite readings",
+            f"{len(online_real_sensors)} online real / {len(real_sensors)} registered real; "
+            f"{len(test_sensors)} test",
+            sensor_data_reason
+            or "No sensor features in the model; physical validation remains pending.",
+        ),
+        feature(
+            "Warning engine",
+            warning_status,
+            "Configurable deterministic decision-support rules",
+            (
+                f"{warning_coverage['supported_village_count']} supported villages"
+                if warning_coverage
+                else "Unavailable"
+            ),
+            warning_reason or "Not an official alert or operational warning service.",
+        ),
+        feature(
+            "Shelters and evacuation routing",
+            shelter_status,
+            "Source-verified shelter inventory + road-routing provider",
+            (
+                f"{shelter_data['route_eligible_records']} route-eligible facilities"
+                if shelter_data
+                else "Inventory unavailable"
+            ),
+            shelter_reason or "Routing requires verified, operational facility records.",
+        ),
+        feature(
+            "Satellite and street basemaps",
+            "available",
+            "Esri World Imagery and OpenStreetMap tile providers",
+            "Configured in the Leaflet dashboard",
+            "External tile health is not probed by the backend status endpoint.",
+        ),
+    ]
+    return {
+        "status": "available",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "coverage": coverage,
+        "feature_audit": feature_audit,
+    }
+
+
+@app.get("/api/system/coverage")
+def get_system_coverage() -> dict[str, object]:
+    return _system_coverage_snapshot()
+
+
+@app.get("/api/system/status")
+def get_system_status() -> dict[str, object]:
+    snapshot = _system_coverage_snapshot()
+    coverage = snapshot["coverage"]
+    assert isinstance(coverage, dict)
+    model = coverage["model"]
+    hydrology = coverage["hydrology"]
+    sensors = coverage["sensors"]
+    shelters = coverage["shelters"]
+    warnings = coverage["warnings"]
+    components = {
+        "backend": {"status": "available", "detail": "FastAPI is serving this response."},
+        "model": {
+            "status": model["status"],
+            "detail": (
+                "Model artifact is available; the XGBoost model loads lazily on scoring."
+                if model["status"] == "available"
+                else "Model artifact or score coverage is unavailable."
+            ),
+            "loaded": model["lazy_loaded"],
+        },
+        "basemaps": {
+            "status": "available",
+            "detail": "Satellite and street providers are configured; external tile health is not probed.",
+        },
+        "hydrology": {
+            "status": hydrology["status"],
+            "detail": "Offline-derived hydrology coverage; not a live measurement.",
+        },
+        "warning_engine": {
+            "status": warnings["status"],
+            "detail": warnings["reason"] or "Warning rules and required local dependencies are available; no evaluation is performed by this status request.",
+        },
+        "sensor_storage": {
+            "status": sensors["storage_status"],
+            "detail": sensors["storage_reason"] or "Optional sensor store is available.",
+        },
+        "current_rainfall": {
+            "status": "unavailable",
+            "detail": "No validated current rainfall feed is configured.",
+        },
+        "weather": {
+            "status": coverage["weather"]["status"],
+            "detail": "Provider availability is configured; live health is not probed here.",
+        },
+        "shelters": {
+            "status": shelters["status"],
+            "detail": shelters["reason"] or "Verified, operational shelter data is available.",
+        },
+        "routing": {
+            "status": "available" if shelters["route_eligible"] else "degraded",
+            "detail": (
+                "Road routing requires at least one verified, operational shelter."
+                if not shelters["route_eligible"]
+                else "Routing is available for verified, operational shelters."
+            ),
+        },
+    }
+    degraded = any(
+        component["status"] in {"degraded", "unavailable"}
+        for name, component in components.items()
+        if name != "backend"
+    )
+    return {
+        "status": "degraded" if degraded else "available",
+        "generated_at": snapshot["generated_at"],
+        "components": components,
+        "coverage": coverage,
+        "feature_audit": snapshot["feature_audit"],
     }
 
 

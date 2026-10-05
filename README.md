@@ -1,14 +1,14 @@
 # FloodGuard
 
-FloodGuard is a planned village/ward-level flood and landslide risk assessment system for hilly, high-risk regions. Nilgiris District, Tamil Nadu is the current demonstration region; it is not a limitation of the system design.
+FloodGuard is a village-level flood and landslide decision-support demonstration for hilly, high-risk regions. Nilgiris District, Tamil Nadu is the current demonstration region; data coverage and configuration are region-specific.
 
 ## Problem
 
 Flash floods and landslides in hilly terrain can have very short warning times. Rainfall alone does not describe local risk: terrain and historical evidence also influence the vulnerability of a specific village or ward.
 
-## Proposed solution
+## Current system
 
-FloodGuard will combine traceable IMD gridded rainfall, public DEM-derived terrain features, and historical flood/landslide information from appropriate ISRO/NRSC/Bhuvan (and, where appropriate, GSI) sources. The resulting feature dataset will later support spatially validated machine-learning risk scoring and an interactive map. Rainfall scenario results will be clearly presented as simulations, not live observations.
+FloodGuard provides an interactive Leaflet map, provenance-aware FastAPI endpoints, an existing spatially validated PU-weighted XGBoost susceptibility model, offline terrain and hydrology products, historical rainfall features, event evidence, rule-based warning decision support, and optional sensor and shelter/routing integrations. Rainfall scenario results are clearly presented as simulations, not live observations.
 
 ## Architecture
 
@@ -28,28 +28,29 @@ The repository keeps these concerns separate:
 - `frontend/` — static HTML, CSS, and JavaScript
 - `data/` — raw, processed, demo, and source/provenance materials
 - `pipeline/` — rainfall, terrain, events, and spatial processing
-- `model/` — reproducible model artifacts (future phase)
+- `model/` — trained model and spatial validation artifacts
 - `tests/` and `docs/` — verification and supporting documentation
 
-## Data sources (future pipeline)
+## Data sources and provenance
 
-- **Rainfall:** IMD gridded rainfall data
-- **Terrain:** SRTM or another suitable public DEM, used for elevation and justified terrain features such as slope
-- **Historical events:** ISRO/NRSC/Bhuvan flood and landslide information; GSI sources where appropriate
-- **Boundaries:** reliable official or public administrative/geographical sources
+- **Rainfall:** historical IMD-derived features for the validated 40-village subset; no validated current rainfall feed is configured
+- **Terrain and hydrology:** SRTM-derived offline elevation, slope, flow accumulation, and drainage features
+- **Historical events:** standalone supplied GSI/NLFC evidence with conditional spatial linkage caveats
+- **Boundaries:** supplied Village Master and SOI KMZ boundary sources
 
-No external datasets are downloaded or included in this foundation task. Each real dataset added later must include its provenance. When an official source cannot be ingested automatically, FloodGuard will document an ingestion interface instead of inventing data.
+Source provenance, availability, and known gaps are surfaced in the data catalog and system coverage endpoints. Missing official data is reported as unavailable rather than replaced with fabricated values.
 
-## Four development phases
+## Implemented capabilities
 
-1. **Foundation + data pipeline** — scaffold and documentation; reproducible rainfall, terrain, and event pipelines; a model-ready feature dataset. No ML model.
-2. **ML + spatial validation** — target definition from real events, XGBoost training, spatial/group-based validation, metrics, and artifacts.
-3. **Backend + dashboard** — model-backed APIs and a Leaflet-based dashboard using a public/OpenStreetMap-compatible basemap.
-4. **Integration + hackathon ready** — end-to-end testing, UX improvements, provenance and validation checks, reproducible documentation, and demo preparation.
+The repository includes reproducible data and model pipelines, hydrology
+features, warning rules, optional ESP32 sensor storage, source-verified
+shelter/routing interfaces, satellite and street basemaps, and system
+readiness/coverage reporting. The status endpoints are informational and do
+not certify operational readiness.
 
 ## Current dashboard
 
-The FastAPI service serves the Leaflet dashboard at `/` and static assets under `/assets`. Existing API endpoints provide the validated village, terrain, rainfall, historical-event, model-status, susceptibility, and rainfall-scenario data used by the interface. The `/api/data-sources` registry and `/api/villages/{village_code}/context` endpoint add source metadata and per-village data aggregation without replacing existing routes. DEM-derived hydrology endpoints and optional Leaflet overlays are described in [docs/hydrology.md](./docs/hydrology.md); regenerate their offline products with `python -m pipeline.build_hydrology_features`. See [docs/data-architecture.md](./docs/data-architecture.md) for identifier, coverage, provenance, and availability details. The health endpoint remains available:
+The FastAPI service serves the Leaflet dashboard at `/` and static assets under `/assets`. Existing endpoints provide village, terrain, historical rainfall, event evidence, model status, susceptibility, and rainfall-scenario data. The `/api/data-sources` registry, `/api/villages/{village_code}/context`, `/api/system/status`, and `/api/system/coverage` expose provenance, village context, live artifact coverage, and optional-subsystem status without replacing existing routes. Hydrology endpoints and overlays are described in [docs/hydrology.md](./docs/hydrology.md); regenerate offline products with `python -m pipeline.build_hydrology_features`. See [docs/data-architecture.md](./docs/data-architecture.md) for identifiers and provenance, [docs/api-catalog.md](./docs/api-catalog.md) for the route catalog, and [docs/final-architecture.md](./docs/final-architecture.md) for runtime boundaries. The health endpoint remains available:
 
 The map defaults to Esri World Imagery satellite tiles and offers OpenStreetMap as the alternate street basemap through the Layers panel. Provider attribution remains visible. The selected basemap is saved in browser local storage (`floodguard_basemap`); repeated satellite tile failures switch the map to Street Map.
 
@@ -57,7 +58,7 @@ The map defaults to Esri World Imagery satellite tiles and offers OpenStreetMap 
 GET /health -> {"status": "ok", "service": "FloodGuard API"}
 ```
 
-The dashboard presents baseline modeled susceptibility using terrain, hydrology, and historical rainfall for the 40-village training coverage, alongside separate rainfall-scenario-adjusted modeled risk. Browser weather remains contextual and is not an input to the model. See [docs/spatial-model.md](./docs/spatial-model.md) for the feature schema, validation, coverage, and positive/unlabeled caveats. This remains a decision-support demonstration, not an operational warning service.
+The dashboard presents baseline modeled susceptibility using terrain, hydrology, and historical rainfall for the 40-village training coverage, alongside separate rainfall-scenario-adjusted modeled risk. Browser weather remains contextual and is not an input to the model. See [docs/spatial-model.md](./docs/spatial-model.md) for feature schema, validation, coverage, and positive/unlabeled caveats.
 
 Optional ESP32 soil-moisture observations can be registered, authenticated, and persisted locally in SQLite. They appear as supplementary village context and on the map when coordinates are supplied; they do not affect baseline model outputs or warning logic. See [docs/esp32-soil-moisture.md](./docs/esp32-soil-moisture.md) for local-network setup, calibration, API details, and a clearly labelled software-only test path.
 
@@ -78,6 +79,6 @@ Then open `http://127.0.0.1:8000/`. Check service health at `http://127.0.0.1:80
 python -m pytest
 ```
 
-## Limitations
+## Limitations and demo readiness
 
-FloodGuard is not an operational warning system. Current susceptibility scores are a demonstration spatial model output, rainfall scenarios are simulations, and weather observations are contextual rather than model inputs. Shelter records are demonstration representations. The interface does not issue official warnings, evacuation orders, guaranteed-safe routes, or exact predictions; follow local authorities for emergency instructions.
+Current rainfall is unavailable, current susceptibility is a demonstration model output, and rainfall scenarios are simulations. Exact model/terrain/hydrology coverage is 40 of 102 village-master records. No real ESP32 sensors are registered and the shelter inventory has zero verified, operational facilities, so routing cannot provide evacuation recommendations. Weather is contextual rather than a model input. FloodGuard does not issue official warnings, evacuation orders, guaranteed-safe routes, or exact predictions; follow local authorities for emergency instructions. See [docs/limitations.md](./docs/limitations.md).

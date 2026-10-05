@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="/assets/css/dashboard.css?v=basemap-20261005">
+  <link rel="stylesheet" href="/assets/css/dashboard.css?v=phase8-coverage-1">
 </head>
 <body class="gmap-theme">
   <!-- Fullscreen Map Application Workspace -->
@@ -1147,11 +1147,11 @@
           <div class="prov-row"><dt>Baseline output</dt><dd>Terrain + hydrology + historical rainfall</dd></div>
           <div class="prov-row"><dt>Model Type</dt><dd id="prov-model-type">Positive-Unlabeled weighted XGBoost proxy</dd></div>
           <div class="prov-row"><dt>Validation</dt><dd id="prov-validation">6-fold Leave-One-Taluk-Out</dd></div>
-          <div class="prov-row"><dt>Universe</dt><dd>40 Validated Villages (25 Pos / 15 Unlabeled)</dd></div>
+          <div class="prov-row"><dt>Universe</dt><dd id="prov-model-universe">40 validated villages (25 positive / 15 unlabeled)</dd></div>
           <div class="prov-row"><dt>Rainfall Mode</dt><dd id="prov-rainfall-mode">In-Memory Multiplier</dd></div>
         </dl>
         <p class="governance-disclaimer" id="experimental-reading">
-          Baseline susceptibility is not real-time risk. Scenario-adjusted modeled risk uses simulated rainfall; current weather is contextual only. The weighted binary learner encodes unlabeled examples as class 0 for fitting and proxy metrics; these are not verified negatives or calibrated probabilities. Hydrology features are available to the model, but their current fitted split importance is zero.
+          Baseline susceptibility is not real-time risk. Scenario-adjusted modeled risk uses simulated rainfall; current weather is contextual only. The weighted binary learner encodes unlabeled examples as class 0 for fitting and proxy metrics; these are not verified negatives or calibrated probabilities. Hydrology features are part of the model schema; their fitted importance varies across the full model and spatial folds.
         </p>
       </div>
     </aside>
@@ -1172,7 +1172,8 @@
 
         <!-- Evidence and source-registry tabs -->
         <div class="modal-tabs" role="tablist">
-          <button class="tab-btn active" data-target="tab-target" role="tab" aria-selected="true" type="button">Target Resolution</button>
+          <button class="tab-btn active" data-target="tab-system-status" role="tab" aria-selected="true" type="button">System Status</button>
+          <button class="tab-btn" data-target="tab-target" role="tab" aria-selected="false" type="button">Target Resolution</button>
           <button class="tab-btn" data-target="tab-spatial" role="tab" aria-selected="false" type="button">Spatial Model</button>
           <button class="tab-btn" data-target="tab-events" role="tab" aria-selected="false" type="button">GSI Inventory</button>
           <button class="tab-btn" data-target="tab-rainfall" role="tab" aria-selected="false" type="button">IMD Rainfall</button>
@@ -1182,6 +1183,39 @@
         </div>
 
         <div class="modal-body-scroll">
+          <div class="tab-pane active" id="tab-system-status" role="tabpanel">
+            <div class="system-coverage-header">
+              <div>
+                <h3 class="section-subheading">System status & data coverage</h3>
+                <p id="system-status-updated" class="text-secondary text-sm">Loading current system status…</p>
+              </div>
+              <button id="btn-refresh-system-status" class="system-status-refresh" type="button">Refresh status</button>
+            </div>
+            <div id="system-coverage-summary" class="system-coverage-summary" aria-live="polite">
+              <p class="text-muted text-sm">Coverage summary is loading.</p>
+            </div>
+            <div class="system-status-table-wrap">
+              <h4 class="section-subheading">Component readiness</h4>
+              <table class="data-table system-status-table">
+                <thead><tr><th>Component</th><th>Status</th><th>Current state / limitation</th></tr></thead>
+                <tbody id="system-components-table">
+                  <tr><td colspan="3" class="text-center">Loading component status…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <details class="feature-audit-details">
+              <summary>Feature coverage, sources & limitations</summary>
+              <div class="system-status-table-wrap">
+                <table class="data-table feature-audit-table">
+                  <thead><tr><th>Feature</th><th>Status</th><th>Source</th><th>Coverage</th><th>Limitation</th></tr></thead>
+                  <tbody id="feature-audit-table">
+                    <tr><td colspan="5" class="text-center">Loading feature coverage…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </div>
+
           <!-- Tab 1: Target Resolution -->
           <div class="tab-pane active" id="tab-target" role="tabpanel">
             <div class="pane-grid">
@@ -1189,16 +1223,16 @@
                 <div class="event-summary-box">
                   <span class="badge-label">PU TARGET FORMULATION</span>
                   <div class="summary-metric">
-                    <strong>40</strong>
+                    <strong id="target-universe-count">40</strong>
                     <span>Validated Village Universe</span>
                   </div>
                 </div>
                 <div class="category-breakdown">
                   <span class="control-label">Universe Partition</span>
                   <dl class="stat-dl">
-                    <div><dt>Historical Positive</dt><dd>25 Villages (62.5%)</dd></div>
-                    <div><dt>Unlabeled</dt><dd>15 Villages (37.5%)</dd></div>
-                    <div><dt>Negative Assumptions</dt><dd>0 (Strict Zero-Imputation)</dd></div>
+                    <div><dt>Historical Positive</dt><dd><span id="target-positive-count">25</span> Villages (<span id="target-positive-percent">62.5</span>%)</dd></div>
+                    <div><dt>Unlabeled</dt><dd><span id="target-unlabeled-count">15</span> Villages (<span id="target-unlabeled-percent">37.5</span>%)</dd></div>
+                    <div><dt>Verified negative labels</dt><dd><span id="target-negative-count">0</span> (none assigned)</dd></div>
                   </dl>
                 </div>
                 <p class="text-muted text-xs">Unlabeled villages lack confirmed GSI inventory records but are never treated as negative evidence.</p>
@@ -1220,17 +1254,17 @@
                     <tbody>
                       <tr>
                         <td>Validated Polygon Universe</td>
-                        <td class="mono">40 Villages</td>
+                        <td class="mono"><span id="target-table-universe">40</span> Villages</td>
                         <td>Exact containment against SOI KMZ boundaries</td>
                       </tr>
                       <tr>
                         <td>Positive Label Count</td>
-                        <td class="mono">25 Villages</td>
+                        <td class="mono"><span id="target-table-positive">25</span> Villages</td>
                         <td>At least 1 verified GSI landslide event</td>
                       </tr>
                       <tr>
                         <td>Unlabeled Count</td>
-                        <td class="mono">15 Villages</td>
+                        <td class="mono"><span id="target-table-unlabeled">15</span> Villages</td>
                         <td>Zero recorded GSI events (UNLABELED ≠ NO RISK)</td>
                       </tr>
                       <tr>
@@ -1444,8 +1478,8 @@
               <div class="guardrail-item">
                 <div class="guardrail-num">02</div>
                 <div class="guardrail-body">
-                  <strong>40 Validated Village Universe</strong>
-                  <p>Modelling is strictly restricted to 40 validated LGD polygons with exact spatial containment (25 positive, 15 unlabeled). Unmatched areas are not interpolated.</p>
+                  <strong id="model-coverage-guardrail-title">40 Validated Village Universe</strong>
+                  <p id="model-coverage-guardrail">Modelling is restricted to the validated LGD village subset. Unmatched areas are not interpolated.</p>
                 </div>
               </div>
               <div class="guardrail-item">
@@ -1464,7 +1498,7 @@
               </div>
             </div>
             <div class="governance-footnote" id="model-reason">
-              Baseline susceptibility · terrain + hydrology + historical rainfall · 25 Positive · 15 Unlabeled · LOTO proxy metrics · UNLABELED ≠ NO RISK
+              Baseline susceptibility · terrain + hydrology + historical rainfall · LOTO proxy metrics · UNLABELED ≠ NO RISK
             </div>
             <section class="warning-engine-audit" aria-labelledby="warning-audit-title">
               <div class="warning-audit-header">
@@ -1530,6 +1564,6 @@
   <!-- External Libraries -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script src="/assets/js/dashboard.js?v=basemap-20261005"></script>
+  <script src="/assets/js/dashboard.js?v=phase8-coverage-3"></script>
 </body>
 </html>

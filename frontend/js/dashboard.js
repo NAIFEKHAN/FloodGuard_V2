@@ -70,6 +70,7 @@
   };
 
   // Application State
+  let coreApiFailure = false;
   let map;
   let satelliteBaseLayer;
   let satelliteLabelLayer;
@@ -263,7 +264,10 @@
     const dotEl = pill ? pill.querySelector(".warn-pill-dot") : null;
     if (!pill || !textEl) return;
     if (!warningSummary) {
-      textEl.textContent = "WARNING STATUS LOADING";
+      pill.className = "nav-warning-pill warning-none";
+      if (dotEl) dotEl.textContent = "!";
+      textEl.textContent = "WARNING STATUS UNAVAILABLE";
+      pill.title = "Warning evaluation is unavailable; modeled susceptibility remains separate.";
       return;
     }
     const counts = warningSummary.stage_counts || {};
@@ -334,6 +338,27 @@
     renderRankingList();
     updateMapPolygons();
     return result;
+  }
+
+  function markWarningResultsUnavailable(error) {
+    console.error("Warning evaluation endpoint is unavailable:", error);
+    warningSummary = null;
+    warningResultsByVillage = new Map();
+    updateWarningIndicators();
+    const version = $("warning-audit-version");
+    const updated = $("warning-audit-updated");
+    const counts = $("warning-audit-counts");
+    if (version) version.textContent = "Unavailable";
+    if (updated) updated.textContent = "Warning evaluation is currently unavailable.";
+    if (counts) counts.textContent = "Warning stage counts unavailable.";
+    updateMapPolygons();
+    renderRankingList();
+    showToast(
+      "Warning evaluation unavailable; modeled susceptibility remains available.",
+      true,
+      loadWarningResults,
+      5000
+    );
   }
 
   function setWarningMapView(enabled) {
@@ -915,7 +940,7 @@
       ) {
         satelliteFallbackApplied = true;
         console.warn(
-          "Esri World Imagery tiles are repeatedly failing; switched to the OpenStreetMap street basemap."
+          `Esri World Imagery failed ${satelliteTileErrors} times; switched to the OpenStreetMap street basemap.`
         );
         setBaseMap("street");
         showToast(
@@ -928,7 +953,9 @@
     });
     let initialBasemap = "satellite";
     try {
-      const savedBasemap = window.localStorage.getItem("floodguard_basemap");
+      const savedBasemap = String(
+        window.localStorage.getItem("floodguard_basemap") || ""
+      ).trim().toLowerCase();
       if (savedBasemap === "satellite" || savedBasemap === "street") {
         initialBasemap = savedBasemap;
       }
@@ -1693,6 +1720,41 @@
       const prEl = $("metric-loto-pr");
       const brierEl = $("metric-loto-brier");
       const coverageEl = $("model-hydrology-coverage");
+      const targetCounts = {
+        "target-universe-count": data.sample_size,
+        "target-positive-count": data.labeled_positive_count,
+        "target-unlabeled-count": data.unlabeled_count,
+        "target-negative-count": data.verified_negative_count,
+        "target-table-universe": data.sample_size,
+        "target-table-positive": data.labeled_positive_count,
+        "target-table-unlabeled": data.unlabeled_count
+      };
+      Object.entries(targetCounts).forEach(([id, value]) => {
+        const element = $(id);
+        if (element && value !== undefined) element.textContent = value;
+      });
+      const universeText = `${data.sample_size} validated villages (${data.labeled_positive_count} positive / ${data.unlabeled_count} unlabeled)`;
+      const universeEl = $("prov-model-universe");
+      if (universeEl) universeEl.textContent = universeText;
+      const coverageTitle = $("model-coverage-guardrail-title");
+      if (coverageTitle) coverageTitle.textContent = `${data.sample_size} Validated Village Universe`;
+      const coverageGuardrail = $("model-coverage-guardrail");
+      if (coverageGuardrail) {
+        coverageGuardrail.textContent =
+          `Modelling is restricted to ${data.sample_size} validated LGD villages ` +
+          `(${data.labeled_positive_count} positive, ${data.unlabeled_count} unlabeled; ` +
+          `${data.verified_negative_count} verified negative). Unmatched areas are not interpolated.`;
+      }
+      const positivePercent = $("target-positive-percent");
+      const unlabeledPercent = $("target-unlabeled-percent");
+      if (Number(data.sample_size) > 0) {
+        if (positivePercent) {
+          positivePercent.textContent = fmt(data.labeled_positive_count / data.sample_size * 100, 1);
+        }
+        if (unlabeledPercent) {
+          unlabeledPercent.textContent = fmt(data.unlabeled_count / data.sample_size * 100, 1);
+        }
+      }
       if (statusEl) {
         statusEl.textContent = "Model ✓";
       }
@@ -1720,10 +1782,16 @@
         modelInfoButton.setAttribute("aria-label", `Model information: ${modelDetails}`);
       }
       if (reasonEl) {
-        reasonEl.textContent = `Baseline susceptibility · terrain + hydrology + historical rainfall · 25 Positive · 15 Unlabeled · LOTO proxy ROC-AUC ${fmt(data.loto_roc_auc, 4)} · UNLABELED ≠ NO RISK`;
+        reasonEl.textContent =
+          `Baseline susceptibility · terrain + hydrology + historical rainfall · ` +
+          `${data.labeled_positive_count} Positive · ${data.unlabeled_count} Unlabeled · ` +
+          `${data.verified_negative_count} verified negatives · LOTO proxy ROC-AUC ` +
+          `${fmt(data.loto_roc_auc, 4)} · UNLABELED ≠ NO RISK`;
       }
     } catch (err) {
       console.warn("Status fetch warning:", err);
+      coreApiFailure = true;
+      throw err;
     }
   }
 
@@ -1750,6 +1818,8 @@
       }
     } catch (err) {
       console.warn("Villages fetch warning:", err);
+      coreApiFailure = true;
+      throw err;
     }
   }
 
@@ -2547,6 +2617,7 @@
    * Apply Rainfall Scenario via API & Synchronize all UI Elements
    */
   async function applyScenario(scenarioKey = "baseline", customMultiplier = null) {
+    let scenarioApiFailed = false;
     try {
       showToast("Updating scenario simulation…");
 
@@ -2555,7 +2626,13 @@
         url = `/api/rainfall-scenario?multiplier=${encodeURIComponent(customMultiplier)}`;
       }
 
-      const data = await api(url);
+      let data;
+      try {
+        data = await api(url);
+      } catch (error) {
+        scenarioApiFailed = true;
+        throw error;
+      }
       activeScenarioMeta = data;
 
       // Sort descending by scenario score
@@ -2647,13 +2724,16 @@
       const kpiVillages = $("kpi-villages");
       if (kpiVillages) kpiVillages.textContent = data.record_count;
 
-      // Load rule-engine results for the active rainfall scenario.
-      await loadWarningResults();
+      // Warning evaluation is a separate feature and must not mask scenario availability.
+      try {
+        await loadWarningResults();
+      } catch (error) {
+        markWarningResultsUnavailable(error);
+      }
       if (warningRefreshTimer) clearInterval(warningRefreshTimer);
       warningRefreshTimer = setInterval(() => {
         loadWarningResults().catch(error => {
-          console.error("Warning state refresh failed:", error);
-          showToast("Warning status could not be refreshed.", true, loadWarningResults);
+          markWarningResultsUnavailable(error);
         });
       }, 60_000);
 
@@ -2674,7 +2754,13 @@
       hideToast();
     } catch (err) {
       console.error("Failed to apply rainfall scenario:", err);
-      showToast("Unable to connect to FloodGuard API", true, () => applyScenario(scenarioKey, customMultiplier));
+      showToast(
+        scenarioApiFailed
+          ? "Unable to connect to FloodGuard API"
+          : "Scenario update failed; existing dashboard data remains available.",
+        true,
+        () => applyScenario(scenarioKey, customMultiplier)
+      );
     }
   }
 
@@ -3129,6 +3215,133 @@
     const warningHistoryTable = $("warning-history-table");
     let dataSourcesLoaded = false;
 
+    const loadSystemStatus = async () => {
+      const updated = $("system-status-updated");
+      const summary = $("system-coverage-summary");
+      const componentTable = $("system-components-table");
+      const featureTable = $("feature-audit-table");
+      if (!summary || !componentTable || !featureTable) return;
+
+      updated.textContent = "Refreshing live API and data coverage…";
+      try {
+        const result = await api("/api/system/status");
+        const coverage = result.coverage || {};
+        const count = (value, fallback = "Unknown") => value === null || value === undefined ? fallback : String(value);
+        const summaryItems = [
+          {
+            label: "Validated polygons",
+            value: `${count(coverage.village_boundaries?.validated_model_polygons)} / ${count(coverage.village_master?.total)} master villages`,
+            status: coverage.village_boundaries?.status
+          },
+          {
+            label: "Model coverage",
+            value: `${count(coverage.model?.supported_villages)} / ${count(coverage.village_master?.total)} villages`,
+            status: coverage.model?.status
+          },
+          {
+            label: "Hydrology",
+            value: `${count(coverage.hydrology?.model_villages_matched)} model villages joined`,
+            status: coverage.hydrology?.status
+          },
+          {
+            label: "Verified shelters",
+            value: `${count(coverage.shelters?.route_eligible)} route-eligible`,
+            status: coverage.shelters?.status
+          },
+          {
+            label: "Real soil sensors",
+            value: `${count(coverage.sensors?.online_real)} online / ${count(coverage.sensors?.registered_real)} registered`,
+            status: coverage.sensors?.status
+          }
+        ];
+        summary.replaceChildren();
+        summaryItems.forEach(item => {
+          const card = document.createElement("article");
+          card.className = "system-coverage-card";
+          const label = document.createElement("span");
+          label.textContent = item.label;
+          const value = document.createElement("strong");
+          value.textContent = item.value;
+          const status = document.createElement("span");
+          const state = ["available", "unavailable", "degraded", "planned", "partial"].includes(item.status)
+            ? item.status
+            : "unavailable";
+          status.className = `system-status-badge system-status-${state}`;
+          status.textContent = state;
+          card.append(label, value, status);
+          summary.append(card);
+        });
+
+        componentTable.replaceChildren();
+        Object.entries(result.components || {}).forEach(([name, component]) => {
+          const row = document.createElement("tr");
+          const nameCell = document.createElement("td");
+          nameCell.textContent = name.replace(/_/g, " ");
+          const statusCell = document.createElement("td");
+          const state = ["available", "unavailable", "degraded", "planned", "partial"].includes(component.status)
+            ? component.status
+            : "unavailable";
+          const badge = document.createElement("span");
+          badge.className = `system-status-badge system-status-${state}`;
+          badge.textContent = state;
+          statusCell.append(badge);
+          const detailCell = document.createElement("td");
+          detailCell.textContent = component.detail || "No status detail provided.";
+          row.append(nameCell, statusCell, detailCell);
+          componentTable.append(row);
+        });
+
+        featureTable.replaceChildren();
+        (result.feature_audit || []).forEach(item => {
+          const row = document.createElement("tr");
+          [
+            item.feature,
+            item.status,
+            item.source,
+            item.coverage,
+            item.limitation
+          ].forEach((value, index) => {
+            const cell = document.createElement("td");
+            cell.textContent = value == null ? "—" : String(value);
+            if (index === 1) {
+              const state = ["available", "unavailable", "degraded", "planned", "partial"].includes(String(value))
+                ? String(value)
+                : "unavailable";
+              cell.replaceChildren();
+              const badge = document.createElement("span");
+              badge.className = `system-status-badge system-status-${state}`;
+              badge.textContent = state;
+              cell.append(badge);
+            }
+            row.append(cell);
+          });
+          featureTable.append(row);
+        });
+        updated.textContent =
+          `Overall system state: ${result.status || "unknown"} · ` +
+          `Refreshed ${result.generated_at || "unknown"} · ` +
+          "External weather and map-tile health is not probed here.";
+      } catch (error) {
+        console.error("System status and coverage could not be loaded:", error);
+        updated.textContent = "System status could not be refreshed; other dashboard features remain available.";
+        summary.replaceChildren();
+        componentTable.replaceChildren();
+        featureTable.replaceChildren();
+        [componentTable, featureTable].forEach((table, index) => {
+          const row = document.createElement("tr");
+          const cell = document.createElement("td");
+          cell.colSpan = index === 0 ? 3 : 5;
+          cell.className = "text-center";
+          cell.textContent = "System status data is unavailable.";
+          row.append(cell);
+          table.append(row);
+        });
+      }
+    };
+
+    const refreshSystemStatus = $("btn-refresh-system-status");
+    if (refreshSystemStatus) refreshSystemStatus.onclick = loadSystemStatus;
+
     const loadDataSources = async () => {
       if (!dataSourcesTable || dataSourcesLoaded) return;
       dataSourcesTable.replaceChildren();
@@ -3238,6 +3451,7 @@
 
     if (btnOpenEvidence) btnOpenEvidence.onclick = () => {
       openModal();
+      loadSystemStatus();
       loadWarningHistory();
     };
     if (modelInfoButton) modelInfoButton.onclick = () => {
@@ -3268,6 +3482,7 @@
         const targetId = btn.dataset.target;
         const targetPane = $(targetId);
         if (targetPane) targetPane.classList.add("active");
+        if (targetId === "tab-system-status") loadSystemStatus();
         if (targetId === "tab-data-sources") loadDataSources();
         if (targetId === "tab-methodology") loadWarningHistory();
       };
@@ -3362,7 +3577,13 @@
       renderEmergencyPanel();
     } catch (err) {
       console.error("Dashboard initialization error:", err);
-      showToast("Unable to connect to FloodGuard API", true, start);
+      showToast(
+        coreApiFailure
+          ? "Unable to connect to FloodGuard API"
+          : "FloodGuard dashboard could not be initialized.",
+        true,
+        () => window.location.reload()
+      );
     }
   }
 

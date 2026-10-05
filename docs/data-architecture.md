@@ -58,4 +58,18 @@ GET /api/villages/635099/context?scenario=baseline
 
 Existing `/api/villages`, `/api/status`, `/api/ml-susceptibility`, `/api/rainfall`, `/api/terrain`, `/api/events`, and `/api/rainfall-scenario` endpoints remain in place. Their additive metadata distinguishes historical, derived, modeled, and simulated values.
 
+`GET /api/system/coverage` reports live artifact/store counts for the village
+master, exact boundaries, model, terrain, village-time rainfall, hydrology,
+historical events, warnings, sensors, and verified shelters. `GET
+/api/system/status` combines those counts with backend and optional-subsystem
+readiness. An unavailable optional source is reported independently; it does
+not mean the FastAPI service is unavailable. Current rainfall is reported as
+unavailable, while Rainfall Scenario remains classified as simulated.
+External weather/tile-provider health is not probed by the status endpoint.
+Warning readiness reflects local dependencies only; the status request does
+not execute warning rules or append warning history. Sensor-store availability
+is distinct from sensor-data availability: the current system has no
+registered real sensors.
+See [api-catalog.md](./api-catalog.md) for the endpoint catalog.
+
 Hydrology derivation, coverage, algorithms, outputs, and caveats are documented in [hydrology.md](./hydrology.md).

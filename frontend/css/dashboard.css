@@ -3347,6 +3347,140 @@ html, body {
   display: block;
 }
 
+.system-coverage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.system-coverage-header .section-subheading,
+.system-status-table-wrap .section-subheading {
+  margin: 0 0 5px;
+}
+
+.system-coverage-header p {
+  margin: 0;
+}
+
+.system-status-refresh {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--brand-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.system-status-refresh:hover {
+  background: var(--bg-card-subtle);
+}
+
+.system-coverage-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.system-coverage-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card-subtle);
+}
+
+.system-coverage-card > span:first-child {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.system-coverage-card strong {
+  color: var(--text-main);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.system-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.system-status-available {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.system-status-partial,
+.system-status-degraded {
+  color: #9a3412;
+  background: #ffedd5;
+}
+
+.system-status-unavailable {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.system-status-planned {
+  color: #475569;
+  background: #e2e8f0;
+}
+
+.system-status-table-wrap {
+  width: 100%;
+  margin-top: 16px;
+  overflow-x: auto;
+}
+
+.system-status-table {
+  min-width: 520px;
+}
+
+.feature-audit-details {
+  margin-top: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.feature-audit-details > summary {
+  padding: 12px 14px;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.feature-audit-details[open] {
+  padding-bottom: 12px;
+}
+
+.feature-audit-table {
+  min-width: 860px;
+}
+
 .pane-grid {
   display: grid;
   grid-template-columns: 260px 1fr;
@@ -5081,6 +5215,15 @@ html, body {
 
   #tab-data-sources .data-table {
     min-width: 680px;
+  }
+
+  .system-coverage-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .system-coverage-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
