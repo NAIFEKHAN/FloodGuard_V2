@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import csv
 import json
+<<<<<<< Updated upstream
 import sqlite3
+=======
+import logging
+>>>>>>> Stashed changes
 from collections import Counter
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -13,16 +17,22 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
 
 from backend.app.sensor_api import MAX_SENSOR_REQUEST_BYTES, router as sensor_router
 from backend.app.shelter_api import router as shelter_router
 from backend.app.warning_api import router as warning_router
+from backend.app.alert_api import router as alert_router
 from backend.app.data_catalog import (
     MODEL_METADATA,
     list_data_sources,
     source_provenance,
 )
 from backend.app.hydrology import get_hydrology_map_data, get_village_hydrology
+from backend.app.services.open_meteo import (
+    fetch_forecast,
+    get_forecast_status,
+)
 from backend.app.village_context import get_village_context
 from pipeline.spatial_features import FEATURE_GROUPS, HYDROLOGY_FEATURES
 
@@ -30,13 +40,19 @@ from pipeline.spatial_features import FEATURE_GROUPS, HYDROLOGY_FEATURES
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
 FRONTEND = ROOT / "frontend"
+load_dotenv(ROOT / ".env")
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="FloodGuard Evidence Dashboard API", version="0.3.0")
 app.mount("/assets", StaticFiles(directory=FRONTEND), name="assets")
 app.mount("/data", StaticFiles(directory=DATA), name="data")
 app.include_router(sensor_router)
 app.include_router(warning_router)
+<<<<<<< Updated upstream
 app.include_router(shelter_router)
+=======
+app.include_router(alert_router)
+>>>>>>> Stashed changes
 
 
 @app.middleware("http")
@@ -106,6 +122,209 @@ def dashboard() -> FileResponse:
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "FloodGuard API"}
+
+
+@app.get("/api/imd/status")
+@app.get("/api/weather/status")
+def get_weather_status() -> dict[str, object]:
+    return get_forecast_status()
+
+
+@app.get("/api/imd/forecast")
+@app.get("/api/weather/forecast")
+def get_weather_forecast(
+    force_refresh: bool = Query(default=False),
+    village_lgd_code: str | None = Query(default=None, min_length=1, max_length=32),
+) -> dict[str, object]:
+    """Return cached/live Open-Meteo rainfall and scores from the existing model."""
+    forecast = fetch_forecast(force_refresh=force_refresh)
+    if not forecast.get("available"):
+        return {
+            **forecast,
+            "mode": "scenario",
+            "records": [],
+        }
+
+    import pandas as pd
+
+    from pipeline.run_rainfall_scenario import evaluate_scenario
+    from pipeline.spatial_features import MODEL_FEATURES, SCENARIO_RAINFALL_FEATURES
+
+    frame = pd.DataFrame(spatial_dataset())
+    missing = [feature for feature in MODEL_FEATURES if feature not in frame.columns]
+    if missing:
+        raise RuntimeError(f"Weather model input is missing features: {missing}.")
+    for feature in MODEL_FEATURES:
+        frame[feature] = frame[feature].astype(float)
+    if frame.loc[:, list(MODEL_FEATURES)].isna().any().any():
+        raise RuntimeError("Weather model input contains missing rainfall or spatial features.")
+
+    rainfall_by_code = {str(row["village_lgd_code"]): row for row in forecast["villages"]}
+    model = ml_model()
+    records: list[dict[str, object]] = []
+    for index, row in frame.iterrows():
+        village_code = str(row["village_lgd_code"])
+        rainfall = rainfall_by_code.get(village_code)
+        if rainfall is None:
+            continue
+        forecast_amount = float(rainfall["chosen_feature_value_mm"])
+        baseline_daily_rainfall = float(row["rainfall_1d_max_mm"])
+        if not baseline_daily_rainfall > 0:
+            raise ValueError(
+                "Cannot calculate an AUTO rainfall factor for village "
+                f"{village_code}: baseline daily rainfall must be greater than zero."
+            )
+        rainfall_factor = forecast_amount / baseline_daily_rainfall
+        evaluated = evaluate_scenario(
+            frame.loc[[index]],
+            model,
+            scenario_key="open_meteo_auto_forecast",
+            multiplier=rainfall_factor,
+        )
+        result = evaluated.iloc[0].to_dict()
+        result.update(
+            {
+                "scenario_key": "open_meteo_auto_forecast",
+                "scenario_name": "Open-Meteo forecast · next 24 hours",
+                "rainfall_factor": rainfall_factor,
+                "baseline_daily_rainfall_mm": baseline_daily_rainfall,
+                "output_classification": "FORECAST_ADJUSTED_MODELED_RISK",
+                "governance_classification": (
+                    "FORECAST_ADJUSTED_SCENARIO_MODELED_RISK_NOT_RECALIBRATED"
+                ),
+                "forecast_rainfall_input_mm": forecast_amount,
+                "next_24h_rainfall_mm": forecast_amount,
+                "rainfall_input_feature": "scenario rainfall features scaled by rainfall_factor",
+                "forecast_period_hours": 24,
+                "weather_source": rainfall["source"],
+                "weather_status": rainfall["status"],
+                "updated_at": rainfall["updated_at"],
+                "current_precipitation_mm": rainfall["current_precipitation_mm"],
+                "weather_forecast": rainfall,
+            }
+        )
+        records.append(result)
+        if village_lgd_code is not None and village_code == village_lgd_code:
+            logger.info("[AUTO] Village: %s", row["village_name_en"])
+            logger.info("[AUTO] Village ID: %s", village_code)
+            logger.info(
+                "[AUTO] Latitude: %s · Longitude: %s",
+                rainfall["latitude"],
+                rainfall["longitude"],
+            )
+            logger.info(
+                "[AUTO] Terrain elevation/slope: %s m / %s°",
+                row["elevation_mean_m"],
+                row["slope_mean_deg"],
+            )
+            logger.info(
+                "[AUTO] Historical rainfall features: 1d=%s, 3d=%s, 7d=%s, annual=%s mm",
+                baseline_daily_rainfall,
+                row["rainfall_3d_p95_mm"],
+                row["rainfall_7d_p95_mm"],
+                row["rainfall_annual_mean_mm"],
+            )
+            logger.info("[AUTO] Baseline rainfall: %s mm", baseline_daily_rainfall)
+            logger.info("[AUTO] Forecast rainfall: %s mm", forecast_amount)
+            logger.info("[AUTO] Calculated multiplier: %.4fx", rainfall_factor)
+            forecast_model_input = frame.loc[index, list(MODEL_FEATURES)].to_dict()
+            for feature in SCENARIO_RAINFALL_FEATURES:
+                forecast_model_input[feature] = (
+                    float(forecast_model_input[feature]) * rainfall_factor
+                )
+            logger.info(
+                "[AUTO] Model inputs: baseline=%s · forecast=%s",
+                frame.loc[index, list(MODEL_FEATURES)].to_dict(),
+                forecast_model_input,
+            )
+            logger.info(
+                "[AUTO] Baseline score: %.2f · Forecast score: %.2f · Change: %+.2f",
+                result["baseline_susceptibility_0_100"],
+                result["scenario_susceptibility_0_100"],
+                result["susceptibility_delta"],
+            )
+
+    if len(records) != len(forecast["villages"]):
+        raise RuntimeError(
+            "Weather forecast village coverage does not match the model's 40-village coverage."
+        )
+    records.sort(
+        key=lambda item: float(item["scenario_susceptibility_0_100"]),
+        reverse=True,
+    )
+    tiers = Counter(str(row["scenario_tier"]) for row in records)
+    selected_village = None
+    if village_lgd_code is not None:
+        selected_village = next(
+            (
+                item
+                for item in forecast["villages"]
+                if str(item["village_lgd_code"]) == village_lgd_code
+            ),
+            None,
+        )
+        if selected_village is None:
+            return {
+                **forecast,
+                "mode": "scenario",
+                "status": "unavailable",
+                "available": False,
+                "forecast_status": "UNAVAILABLE",
+                "record_count": 0,
+                "villages": [],
+                "records": [],
+                "selected_village_lgd_code": village_lgd_code,
+                "warning": (
+                    "No validated forecast coordinates are available for this village; "
+                    "Scenario Mode remains active."
+                ),
+            }
+        forecast["selected_village"] = selected_village
+        forecast["selected_village_lgd_code"] = village_lgd_code
+        records = [
+            record
+            for record in records
+            if str(record["village_lgd_code"]) == village_lgd_code
+        ]
+        selected_record = records[0] if records else None
+        if selected_record is not None and selected_record["scenario_tier"] == "HIGH":
+            from backend.app.services.email_alert import send_high_risk_alert
+
+            selected_record["email_alert"] = send_high_risk_alert(
+                village_code=village_lgd_code,
+                village_name=str(selected_record["village_name_en"]),
+                risk_score=float(selected_record["scenario_susceptibility_0_100"]),
+                rainfall_mm=float(selected_record["forecast_rainfall_input_mm"]),
+                weather_source=str(selected_record["weather_source"]),
+                forecast_status=str(selected_record["weather_status"]),
+            )
+    response = {
+        **forecast,
+        "mode": "auto",
+        "data_type": "forecast_adjusted_modeled",
+        "classification": "OPEN_METEO_FORECAST_ADJUSTED_MODELED_RISK",
+        "record_count": len(records),
+        "high_tier_count": tiers.get("HIGH", 0),
+        "medium_tier_count": tiers.get("MEDIUM", 0),
+        "low_tier_count": tiers.get("LOW", 0),
+        "records": records,
+        "warning": (
+            forecast.get("warning")
+            or "Forecast-adjusted modeled output only; not an official warning."
+        ),
+    }
+    if selected_village is not None:
+        response.update(
+            {
+                "village": selected_village["village_name_en"],
+                "latitude": selected_village["latitude"],
+                "longitude": selected_village["longitude"],
+                "next_24h_rainfall_mm": selected_village[
+                    "next_24h_rainfall_mm"
+                ],
+            }
+        )
+    return response
 
 
 @app.get("/api/villages")

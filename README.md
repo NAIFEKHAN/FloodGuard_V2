@@ -60,6 +60,8 @@ GET /health -> {"status": "ok", "service": "FloodGuard API"}
 
 The dashboard presents baseline modeled susceptibility using terrain, hydrology, and historical rainfall for the 40-village training coverage, alongside separate rainfall-scenario-adjusted modeled risk. Browser weather remains contextual and is not an input to the model. See [docs/spatial-model.md](./docs/spatial-model.md) for feature schema, validation, coverage, and positive/unlabeled caveats.
 
+The scenario drawer also offers an optional Open-Meteo live forecast mode. It fetches village-coordinate hourly rain and precipitation, caches successful results, and falls back to Scenario Mode if neither a live forecast nor cache is available. The forecast-adjusted model output substitutes the next-24-hour accumulation into the existing historical daily-maximum rainfall feature; it is not retrained or recalibrated. See [docs/weather-forecast.md](./docs/weather-forecast.md) for source, coverage, methodology, and limitations.
+
 Optional ESP32 soil-moisture observations can be registered, authenticated, and persisted locally in SQLite. They appear as supplementary village context and on the map when coordinates are supplied; they do not affect baseline model outputs or warning logic. See [docs/esp32-soil-moisture.md](./docs/esp32-soil-moisture.md) for local-network setup, calibration, API details, and a clearly labelled software-only test path.
 
 ## Run locally (PowerShell)
@@ -79,6 +81,12 @@ Then open `http://127.0.0.1:8000/`. Check service health at `http://127.0.0.1:80
 python -m pytest
 ```
 
+<<<<<<< Updated upstream
 ## Limitations and demo readiness
+=======
+Optional demo email alerts use `SMTP_USER` and a Gmail App Password in the ignored local `.env` file; copy the names and recipient list from `.env.example`. The dashboard never receives SMTP credentials. The test endpoint is `POST /api/alerts/test-email`. Automatic high-risk AUTO alerts are deduplicated per village for 30 minutes.
+
+## Limitations
+>>>>>>> Stashed changes
 
 Current rainfall is unavailable, current susceptibility is a demonstration model output, and rainfall scenarios are simulations. Exact model/terrain/hydrology coverage is 40 of 102 village-master records. No real ESP32 sensors are registered and the shelter inventory has zero verified, operational facilities, so routing cannot provide evacuation recommendations. Weather is contextual rather than a model input. FloodGuard does not issue official warnings, evacuation orders, guaranteed-safe routes, or exact predictions; follow local authorities for emergency instructions. See [docs/limitations.md](./docs/limitations.md).

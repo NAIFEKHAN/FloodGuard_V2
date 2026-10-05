@@ -58,10 +58,14 @@
     if (toast) toast.style.display = "none";
   };
 
-  const api = async path => {
+  const api = async (path, options = {}) => {
     try {
-      const res = await fetch(path);
-      if (!res.ok) throw new Error(`HTTP ${res.status} (${res.statusText})`);
+      const res = await fetch(path, options);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const detail = typeof body.detail === "string" ? body.detail : "";
+        throw new Error(detail || `HTTP ${res.status} (${res.statusText})`);
+      }
       return await res.json();
     } catch (err) {
       console.error(`API fetch failed for ${path}:`, err);
@@ -225,9 +229,12 @@
   let allEvents = [];
   let scenarioRecords = [];
   let activeScenarioMeta = null;
+  let activeRainfallMode = "scenario";
+  let lastManualRainfallInput = { scenarioKey: "baseline", multiplier: null };
   let villagePolygonsMap = new Map();
   let shelterMarkersMap = new Map();
   let selectedVillageLgd = null;
+  let autoVillageCalculationRequestId = 0;
   let currentTierFilter = "all";
   let currentSearchTerm = "";
   let sliderDebounceTimer = null;
@@ -239,6 +246,12 @@
   let warningSummary = null;
   let warningMapEnabled = false;
   let warningRefreshTimer = null;
+
+  function activeRainfallDisplayLabel() {
+    if (activeRainfallMode === "auto") return "Open-Meteo forecast · next 24 hours";
+    const factor = fmt(activeScenarioMeta?.rainfall_factor ?? 1.0, 2);
+    return `${factor}× ${activeScenarioMeta?.scenario_name || "Historical Baseline"}`;
+  }
 
   const SOIL_MOISTURE_DISPLAY_BANDS = [
     { maximum: 30, label: "Dry" },
@@ -482,6 +495,7 @@
   }
 
   async function loadWarningResults() {
+    if (activeRainfallMode === "auto") return null;
     const params = new URLSearchParams({ mode: "scenario" });
     const activeKey = String(activeScenarioMeta?.scenario_key || "baseline");
     const activeMultiplier = Number(activeScenarioMeta?.rainfall_factor ?? 1);
@@ -499,6 +513,7 @@
     } else {
       params.set("multiplier", String(activeMultiplier));
     }
+<<<<<<< Updated upstream
     try {
       const result = await api(`/api/warnings?${params}`);
       warningSummary = result;
@@ -516,6 +531,19 @@
       setWarningUnavailable(error);
       return null;
     }
+=======
+    const result = await api(`/api/warnings?${params}`);
+    if (activeRainfallMode === "auto") return result;
+    warningSummary = result;
+    renderWarningAudit(result);
+    warningResultsByVillage = new Map(
+      (result.records || []).map(warning => [String(warning.village_lgd_code), warning])
+    );
+    updateWarningIndicators();
+    renderRankingList();
+    updateMapPolygons();
+    return result;
+>>>>>>> Stashed changes
   }
 
   function setWarningMapView(enabled) {
@@ -701,7 +729,7 @@
 
     const cmpScen = $("cmp-scen-val");
     if (cmpScen && activeScenarioMeta) {
-      cmpScen.textContent = `${fmt(activeScenarioMeta.rainfall_factor, 2)}× ${activeScenarioMeta.scenario_name}`;
+      cmpScen.textContent = activeRainfallDisplayLabel();
     }
 
     // Selected Village Drawer Weather Box
@@ -932,13 +960,15 @@
     // Rainfall Scenario
     const emScenName = $("em-scen-name");
     if (emScenName) {
-      emScenName.textContent = activeScenarioMeta?.scenario_name || "Historical Baseline";
+      emScenName.textContent = activeRainfallDisplayLabel();
     }
 
     const emScenFactor = $("em-scen-factor");
     if (emScenFactor) {
       const factor = activeScenarioMeta?.rainfall_factor ?? 1.0;
-      emScenFactor.textContent = `${fmt(factor, 2)}× Baseline Multiplier`;
+      emScenFactor.textContent = activeRainfallMode === "auto"
+        ? "Next 24-hour rainfall input"
+        : `${fmt(factor, 2)}× Baseline Multiplier`;
     }
 
     // Nearest demonstration shelter location
@@ -1016,8 +1046,7 @@
     const score = Number(record?.scenario_susceptibility_0_100 ?? record?.ml_susceptibility_0_100 ?? 0);
     const tier = getTierInfo(score).tier;
     const puStatus = record?.pu_status || "UNLABELED";
-    const scenarioName = activeScenarioMeta?.scenario_name || "Historical Baseline";
-    const factor = fmt(activeScenarioMeta?.rainfall_factor ?? 1.0, 2);
+    const scenarioName = activeRainfallDisplayLabel();
     const shelter = selectedShelter || DEMO_DESIGNATED_SHELTERS[0];
     const shelterDist = shelter ? fmt(haversineDistKm(userOrigin.lat, userOrigin.lng, shelter.latitude, shelter.longitude), 1) : "—";
     const shelterName = shelter ? shelter.shelter_name : "Nilgiris Relief Center";
@@ -1029,8 +1058,13 @@
       `Taluk: ${talukName}`,
       `Modeled Risk Tier: ${tier} (${fmt(score, 1)} / 100)`,
       `PU Status: ${puStatus} (UNLABELED ≠ NO RISK)`,
+<<<<<<< Updated upstream
       `Active Rainfall Scenario: ${scenarioName} (${factor}×)`,
       `Nearest DEMO shelter location (not verified): ${shelterName} (~${shelterDist} km)`,
+=======
+      `Active Rainfall Input: ${scenarioName}`,
+      `Nearest Designated Shelter: ${shelterName} (~${shelterDist} km)`,
+>>>>>>> Stashed changes
       "--------------------------------------------------",
       "Nilgiris DDMA Emergency Helpline: 1077",
       "Police: 100 | Fire & Rescue: 101 | Emergency: 112",
@@ -1464,7 +1498,7 @@
 
     const scenNameEl = $("evac-matched-scenario-name");
     if (scenNameEl && activeScenarioMeta) {
-      scenNameEl.textContent = `${fmt(activeScenarioMeta.rainfall_factor, 2)}x ${activeScenarioMeta.scenario_name}`;
+      scenNameEl.textContent = activeRainfallDisplayLabel();
     }
 
     // Notice text & UNLABELED handling
@@ -1485,7 +1519,7 @@
 
     const ctxScen = $("ctx-rainfall-scen");
     if (ctxScen && activeScenarioMeta) {
-      ctxScen.textContent = `${fmt(activeScenarioMeta.rainfall_factor, 2)}× ${activeScenarioMeta.scenario_name}`;
+      ctxScen.textContent = activeRainfallDisplayLabel();
     }
   }
 
@@ -2394,8 +2428,11 @@
     if (!record) return;
     selectedVillageRecord = record;
     selectedVillageLgd = String(record.village_lgd_code);
+    if (activeRainfallMode === "auto") updateWeatherForecastSummary();
 
-    closeAllPanels("village-detail-panel");
+    const scenarioPanel = $("scenario-panel");
+    const keepScenarioResultsVisible = scenarioPanel?.style.display === "flex";
+    if (!keepScenarioResultsVisible) closeAllPanels("village-detail-panel");
     setRankingPanelExpanded(false);
 
     const score = Number(record.scenario_susceptibility_0_100 ?? record.ml_susceptibility_0_100 ?? 0);
@@ -2439,12 +2476,40 @@
     // Synchronize Scenario Drawer Experiment Result Card
     const expVillageName = $("scen-exp-village-name");
     if (expVillageName) expVillageName.textContent = record.village_name_en || "Selected Village";
+    const villageSelect = $("scenario-village-select");
+    if (villageSelect) villageSelect.value = String(record.village_lgd_code);
 
     const expBaseScore = $("scen-exp-base-score");
     if (expBaseScore) expBaseScore.textContent = fmt(baseScore, 1);
 
     const expScenScore = $("scen-exp-scen-score");
     if (expScenScore) expScenScore.textContent = fmt(score, 1);
+
+    const expFactorLabel = $("scen-exp-factor-label");
+    if (expFactorLabel && activeRainfallMode === "auto") {
+      expFactorLabel.textContent =
+        `Forecast rainfall: ${fmt(record.forecast_rainfall_input_mm, 1)} mm / 24 h · Factor: ${fmt(record.rainfall_factor, 2)}×`;
+    }
+
+    const expRiskLevel = $("scen-exp-risk-level");
+    if (expRiskLevel) expRiskLevel.textContent = tier.tier;
+    const emailStatus = $("scenario-email-alert-status");
+    if (emailStatus) {
+      const deliveryStatus = record.email_alert?.status;
+      emailStatus.textContent = tier.tier !== "HIGH"
+        ? "Email Alert: Ready · only sent for HIGH risk"
+        : deliveryStatus === "sent"
+          ? "HIGH RISK · Accepted by email server; check Inbox/Spam"
+          : deliveryStatus === "partial"
+            ? "HIGH RISK · Some recipient addresses were rejected"
+          : deliveryStatus === "skipped_cooldown"
+            ? "HIGH RISK · Alert sent recently; duplicate skipped"
+            : deliveryStatus === "failed"
+              ? "HIGH RISK · Email delivery failed"
+              : deliveryStatus === "not_configured"
+                ? "HIGH RISK · Email not configured"
+                : "HIGH RISK · Checking email alert status…";
+    }
 
     const expDeltaVal = $("scen-exp-delta-val");
     if (expDeltaVal) {
@@ -2506,10 +2571,17 @@
     if (compRain1d) {
       const factor = activeScenarioMeta?.rainfall_factor ?? 1.0;
       const base1d = Number(record.rainfall_1d_max_mm || 180.0);
-      compRain1d.textContent = `${fmt(base1d * factor, 1)} mm`;
+      const rainfallAmount = activeRainfallMode === "auto"
+        ? record.forecast_rainfall_input_mm
+        : base1d * factor;
+      compRain1d.textContent = `${fmt(rainfallAmount, 1)} mm`;
     }
     const compRain1dRaw = $("comp-rain-1d-raw");
-    if (compRain1dRaw) compRain1dRaw.textContent = "Simulated 1D Peak";
+    if (compRain1dRaw) {
+      compRain1dRaw.textContent = activeRainfallMode === "auto"
+        ? "Next 24-hour rainfall"
+        : "Simulated 1D Peak";
+    }
 
     // GSI Evidence Card description
     const gsiDescEl = $("detail-gsi-desc");
@@ -2522,7 +2594,9 @@
     // Provenance
     const provRainMode = $("prov-rainfall-mode");
     if (provRainMode && activeScenarioMeta) {
-      provRainMode.textContent = `In-Memory Scaling (${activeScenarioMeta.scenario_name} · ${activeScenarioMeta.rainfall_factor}x)`;
+      provRainMode.textContent = activeRainfallMode === "auto"
+        ? `Open-Meteo forecast substitution · ${fmt(record.forecast_rainfall_input_mm, 1)} mm / 24 h`
+        : `In-Memory Scaling (${activeScenarioMeta.scenario_name} · ${activeScenarioMeta.rainfall_factor}x)`;
     }
 
     // Server-evaluated decision-support warning card
@@ -2773,7 +2847,8 @@
             <strong>LGD Code:</strong> ${escapeHtml(village.village_lgd_code)}<br>
             <strong>PU Status:</strong> ${escapeHtml(village.pu_status)}<br>
             <strong>Baseline modeled susceptibility:</strong> ${fmt(village.baseline_susceptibility_0_100 ?? village.ml_susceptibility_0_100, 1)} / 100<br>
-            <strong>Scenario-adjusted modeled risk:</strong> <strong>${fmt(score, 1)} / 100</strong> (${tier.tier})<br>
+            <strong>${activeRainfallMode === "auto" ? "Forecast-adjusted" : "Scenario-adjusted"} modeled risk:</strong> <strong>${fmt(score, 1)} / 100</strong> (${tier.tier})<br>
+            ${activeRainfallMode === "auto" ? `<strong>Next 24-hour rainfall:</strong> ${fmt(village.forecast_rainfall_input_mm, 1)} mm<br>` : ""}
             <strong>Decision-support warning:</strong> <strong style="color:${warningColor}">${escapeHtml(warnState.statusText)}</strong><br>
             <strong>Scenario Delta:</strong> <span class="${delta.className}">${delta.text}</span><br>
             <strong>Mean Slope:</strong> ${fmt(village.slope_mean_deg, 1)}°<br>
@@ -2784,10 +2859,225 @@
     });
   }
 
+  function setRainfallMode(mode) {
+    activeRainfallMode = mode;
+    document.querySelectorAll(".rainfall-mode-btn").forEach(btn => {
+      const active = btn.dataset.mode === mode;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    document.querySelectorAll(".scenario-mode-only").forEach(control => {
+      control.hidden = mode === "auto";
+      control.style.display = mode === "auto" ? "none" : "";
+    });
+    const status = $("imd-forecast-status");
+    if (status) status.hidden = mode !== "auto";
+    const title = $("scenario-mode-title");
+    if (title) title.textContent = mode === "auto" ? "LIVE FORECAST" : "RAINFALL SCENARIO";
+    const subtitle = $("scenario-mode-subtitle");
+    if (subtitle) {
+      subtitle.textContent = mode === "auto"
+        ? "Open-Meteo village forecast totals for the next 24 hours; not an operational warning."
+        : "Adjust rainfall manually to see how the modeled susceptibility changes.";
+    }
+    const modeLabels = [
+      ["village-ranking-label", mode === "auto" ? "Ranked by live forecast-adjusted modeled risk" : "Ranked by scenario-adjusted modeled risk"],
+      ["overview-risk-label", mode === "auto" ? "MODELED FORECAST-ADJUSTED RISK" : "MODELED SCENARIO RISK"],
+      ["evac-rainfall-delta-label", mode === "auto" ? "Forecast Input Delta" : "Scenario Impact"],
+      ["em-rainfall-mode-label", mode === "auto" ? "LIVE WEATHER FORECAST" : "RAINFALL SCENARIO"],
+      ["em-rainfall-classification", mode === "auto" ? "WEATHER FORECAST" : "SIMULATION"],
+      ["em-rainfall-note", mode === "auto" ? "Open-Meteo forecast-adjusted model output — not an official warning." : "Scenario simulation — not a live warning."],
+      ["scenario-rainfall-method", mode === "auto" ? "Open-Meteo 24-hour rainfall is converted to a village-specific factor and passed through the existing rainfall scenario calculation." : "Rainfall is changed for the simulation."],
+      ["scenario-disclaimer-label", mode === "auto" ? "WEATHER FORECAST" : "SIMULATION ONLY"],
+      ["scenario-disclaimer-message", mode === "auto" ? "Open-Meteo forecast input; forecast-adjusted model output is not an emergency warning." : "This is a manual rainfall experiment, not a live rainfall forecast or emergency warning."],
+      ["scen-exp-scen-label", mode === "auto" ? "FORECAST RISK" : "CURRENT SCENARIO"],
+      ["scen-exp-base-label", mode === "auto" ? "Base susceptibility" : "1.00× Normal"],
+      ["scen-exp-base-score-label", mode === "auto" ? "BASE SUSCEPTIBILITY" : "BASELINE SCORE"]
+    ];
+    modeLabels.forEach(([id, label]) => {
+      const element = $(id);
+      if (element) element.textContent = label;
+    });
+    if (mode === "auto") {
+      document.querySelectorAll(".preset-btn[data-scenario]").forEach(btn => {
+        btn.classList.remove("active");
+      });
+    }
+  }
+
+  function updateWeatherForecastSummary() {
+    const status = $("imd-forecast-status");
+    if (!status || activeRainfallMode !== "auto") return;
+    const record = scenarioRecords.find(
+      row => String(row.village_lgd_code) === String(selectedVillageLgd)
+    ) || scenarioRecords[0];
+    const forecast = record?.weather_forecast;
+    if (!record || !forecast) {
+      status.textContent = "Live forecast unavailable; Scenario Mode remains active.";
+      return;
+    }
+    const forecastStatus = String(activeScenarioMeta?.status || forecast.status || forecast.forecast_status || "live").toLowerCase();
+    const dataLabel = forecastStatus === "cached" ? "Cached forecast" : "Live forecast";
+    status.textContent = `Forecast source: Open-Meteo · Data: ${dataLabel} · Next 24 h rainfall: ${fmt(forecast.next_24h_rainfall_mm, 1)} mm`;
+    const output = $("scenario-value");
+    if (output) output.textContent = `Next 24-hour rainfall: ${fmt(forecast.next_24h_rainfall_mm, 1)} mm`;
+  }
+
+  function updateScenarioVillageSelect() {
+    const select = $("scenario-village-select");
+    if (!select) return;
+    const validRecords = scenarioRecords.filter(record =>
+      record.village_lgd_code != null &&
+      record.village_name_en &&
+      Number.isFinite(Number(record.scenario_susceptibility_0_100)) &&
+      (activeRainfallMode !== "auto" ||
+        Number.isFinite(Number(record.forecast_rainfall_input_mm)))
+    );
+    select.replaceChildren(...validRecords.map(record => {
+      const option = document.createElement("option");
+      option.value = String(record.village_lgd_code);
+      option.textContent = record.village_name_en;
+      return option;
+    }));
+    select.value = String(selectedVillageLgd || "");
+  }
+
+  async function recalculateAutoVillage(code) {
+    const requestId = ++autoVillageCalculationRequestId;
+    showToast("Recalculating selected village forecast risk…");
+    try {
+      const data = await api(`/api/weather/forecast?village_lgd_code=${encodeURIComponent(code)}`);
+      const statuses = [data.status, data.forecast_status]
+        .map(status => String(status || "").toLowerCase());
+      const record = Array.isArray(data.records)
+        ? data.records.find(row => String(row.village_lgd_code) === code)
+        : null;
+      if (
+        !data.available ||
+        !statuses.some(status => status === "live" || status === "cached") ||
+        !record ||
+        !Number.isFinite(Number(record.forecast_rainfall_input_mm))
+      ) {
+        throw new Error(`No valid cached/live forecast result returned for village ${code}.`);
+      }
+      if (requestId !== autoVillageCalculationRequestId) return;
+
+      const existingIndex = scenarioRecords.findIndex(
+        row => String(row.village_lgd_code) === code
+      );
+      if (existingIndex < 0) {
+        throw new Error(`Village ${code} is not in the current forecast ranking.`);
+      }
+      scenarioRecords[existingIndex] = record;
+      updateMapPolygons();
+      renderRankingList();
+      renderVillageDetail(record);
+      updateEvacuationContext();
+      hideToast();
+    } catch (error) {
+      if (requestId !== autoVillageCalculationRequestId) return;
+      console.error("Failed to recalculate selected village forecast risk:", error);
+      showToast("Unable to recalculate this village's forecast risk.", true, null, 5000);
+    }
+  }
+
+  async function applyAutoForecast() {
+    setRainfallMode("auto");
+    showToast("Loading Open-Meteo live forecast…");
+    try {
+      const data = await api("/api/weather/forecast?force_refresh=true");
+      const forecastStatuses = [data.status, data.forecast_status]
+        .map(status => String(status || "").toLowerCase());
+      const hasValidForecast = Boolean(data.available) &&
+        forecastStatuses.some(status => status === "live" || status === "cached");
+      if (!hasValidForecast || !Array.isArray(data.records) || !data.records.length) {
+        setRainfallMode("scenario");
+        showToast(
+          "Live forecast unavailable; Scenario Mode remains active.",
+          true,
+          null,
+          5000
+        );
+        return;
+      }
+
+      const validForecastRecords = data.records.filter(row =>
+        row.village_lgd_code != null &&
+        row.village_name_en &&
+        Number.isFinite(Number(row.scenario_susceptibility_0_100)) &&
+        Number.isFinite(Number(row.forecast_rainfall_input_mm))
+      );
+      if (!validForecastRecords.length) {
+        setRainfallMode("scenario");
+        showToast(
+          "No valid village forecast is available; Scenario Mode remains active.",
+          true,
+          null,
+          5000
+        );
+        return;
+      }
+
+      activeScenarioMeta = {
+        ...data,
+        scenario_key: "baseline",
+        scenario_name: "Open-Meteo forecast · next 24 hours",
+        rainfall_factor: null
+      };
+      scenarioRecords = [...data.records].sort(
+        (a, b) => Number(b.scenario_susceptibility_0_100) - Number(a.scenario_susceptibility_0_100)
+      );
+      updateScenarioVillageSelect();
+      const currentSelection = validForecastRecords.find(
+        row => String(row.village_lgd_code) === String(selectedVillageLgd)
+      );
+      const defaultVillage = validForecastRecords.find(
+        row => String(row.village_name_en).trim().toLowerCase().startsWith("kagguchi")
+      ) || validForecastRecords[0];
+      const initialVillage = currentSelection || defaultVillage;
+      warningResultsByVillage.clear();
+      warningSummary = null;
+      if (warningRefreshTimer) clearInterval(warningRefreshTimer);
+
+      const statusBadge = $("scenario-status-badge");
+      const dataLabel = forecastStatuses.includes("cached") ? "Cached forecast" : "Live forecast";
+      if (statusBadge) statusBadge.textContent = `AUTO · ${dataLabel} · 24 h`;
+      const headerBadge = $("header-scenario-badge");
+      if (headerBadge) headerBadge.textContent = `AUTO · ${dataLabel}`;
+      const overviewLabel = $("overview-scenario-context");
+      if (overviewLabel) overviewLabel.textContent = "AUTO · Next 24 h";
+
+      [["overview-count-high", data.high_tier_count], ["kpi-high-tier", data.high_tier_count],
+        ["overview-count-med", data.medium_tier_count], ["kpi-med-tier", data.medium_tier_count],
+        ["overview-count-low", data.low_tier_count], ["kpi-low-tier", data.low_tier_count],
+        ["kpi-villages", data.record_count]].forEach(([id, value]) => {
+        const element = $(id);
+        if (element) element.textContent = String(value ?? "—");
+      });
+
+      updateMapPolygons();
+      renderRankingList();
+      if (initialVillage) {
+        selectedVillageLgd = String(initialVillage.village_lgd_code);
+        await recalculateAutoVillage(selectedVillageLgd);
+      }
+      updateWeatherForecastSummary();
+      updateEvacuationContext();
+      renderEmergencyPanel();
+      hideToast();
+    } catch (err) {
+      console.error("Failed to load Open-Meteo forecast:", err);
+      setRainfallMode("scenario");
+      showToast("Live forecast unavailable; Scenario Mode remains active.", true, null, 5000);
+    }
+  }
+
   /**
    * Apply Rainfall Scenario via API & Synchronize all UI Elements
    */
   async function applyScenario(scenarioKey = "baseline", customMultiplier = null) {
+    setRainfallMode("scenario");
+    lastManualRainfallInput = { scenarioKey, multiplier: customMultiplier };
     try {
       showToast("Updating scenario simulation…");
 
@@ -2803,6 +3093,7 @@
       scenarioRecords = (data.records || []).sort(
         (a, b) => Number(b.scenario_susceptibility_0_100) - Number(a.scenario_susceptibility_0_100)
       );
+      updateScenarioVillageSelect();
 
       // Plain-English scenario label
       let scenDisplayName = "Normal Rainfall";
@@ -2857,7 +3148,7 @@
       }
 
       // Update Preset Buttons active state
-      document.querySelectorAll(".preset-btn").forEach(btn => {
+      document.querySelectorAll(".preset-btn[data-scenario]").forEach(btn => {
         if (customMultiplier === null && btn.dataset.scenario === scenarioKey) {
           btn.classList.add("active");
         } else {
@@ -3213,6 +3504,35 @@
 
     if (btnToggleScenario) btnToggleScenario.onclick = toggleScenarioHandler;
     if (btnCloseScenario) btnCloseScenario.onclick = () => closeAllPanels(null);
+    const btnSendTestAlert = $("btn-send-test-alert");
+    if (btnSendTestAlert) {
+      btnSendTestAlert.onclick = async () => {
+        if (!window.confirm("Send a FloodGuard test email to the configured alert recipients?")) return;
+        const emailStatus = $("scenario-email-alert-status");
+        if (emailStatus) emailStatus.textContent = "Email Alert: Sending test message…";
+        btnSendTestAlert.disabled = true;
+        try {
+          const result = await api("/api/alerts/test-email", { method: "POST" });
+          if (emailStatus) {
+            emailStatus.textContent = result.status === "partial"
+              ? `Email Alert: Partial acceptance (${result.accepted_recipient_count}/${result.recipient_count}); check rejected recipients`
+              : `Email Alert: Accepted by mail server (${result.accepted_recipient_count}/${result.recipient_count}); check Inbox/Spam`;
+          }
+          if (result.status === "partial") {
+            showToast("Some recipients were rejected by the mail server.", true, null, 8000);
+          } else {
+            showToast("Mail server accepted the test message. Check Inbox and Spam; delivery is not confirmed.", false, null, 8000);
+          }
+        } catch (error) {
+          console.error("Test email delivery failed:", error);
+          if (emailStatus) emailStatus.textContent = "Email Alert: Test delivery failed";
+          const message = error instanceof Error ? error.message : "Unknown email delivery error.";
+          showToast(`Test email failed: ${message}`, true, null, 8000);
+        } finally {
+          btnSendTestAlert.disabled = false;
+        }
+      };
+    }
 
     // Emergency Alert Center Toggle & Actions
     const btnToggleEmergency = $("btn-toggle-emergency");
@@ -3524,15 +3844,44 @@
     document.querySelectorAll(".preset-btn").forEach(btn => {
       btn.onclick = () => {
         const scenario = btn.dataset.scenario;
-        applyScenario(scenario);
+        if (scenario) applyScenario(scenario);
       };
     });
+
+    document.querySelectorAll(".rainfall-mode-btn").forEach(btn => {
+      btn.onclick = () => {
+        if (btn.dataset.mode === "auto") {
+          applyAutoForecast();
+        } else {
+          applyScenario(
+            lastManualRainfallInput.scenarioKey,
+            lastManualRainfallInput.multiplier
+          );
+        }
+      };
+    });
+
+    const villageSelect = $("scenario-village-select");
+    if (villageSelect) {
+      villageSelect.onchange = () => {
+        const code = villageSelect.value;
+        if (activeRainfallMode === "auto" && code) {
+          recalculateAutoVillage(code);
+          return;
+        }
+        const selectedRecord = scenarioRecords.find(record =>
+          String(record.village_lgd_code) === code
+        );
+        if (selectedRecord) renderVillageDetail(selectedRecord);
+      };
+    }
 
     // Scenario Multiplier Slider with Debounce
     const slider = $("scenario-slider");
     const output = $("scenario-value");
     if (slider) {
       slider.oninput = () => {
+        setRainfallMode("scenario");
         const val = Number(slider.value).toFixed(2);
         if (output) output.textContent = `Current multiplier: ${val}×`;
         const expFactor = $("scen-exp-factor-label");

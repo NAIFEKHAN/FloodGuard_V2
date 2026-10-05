@@ -68,6 +68,9 @@ data/processed/*
 # Demo data
 data/demo/*
 !data/demo/.gitkeep
+data/cache/*.json
+data/cache/*.tmp
+!data/cache/.gitkeep
 data/sensors.sqlite3*
 hardware/esp32_soil_moisture/secrets.h
 

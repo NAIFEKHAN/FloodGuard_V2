@@ -2199,6 +2199,14 @@ html, body {
   gap: 6px;
 }
 
+.rainfall-mode-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.scenario-mode-only[hidden] {
+  display: none !important;
+}
+
 .preset-btn {
   background: var(--bg-card-subtle);
   border: 1px solid var(--border-color);
@@ -2356,6 +2364,23 @@ html, body {
   color: var(--text-main);
 }
 
+.scenario-village-select-label {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.scenario-village-select {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--text-main);
+  font: inherit;
+}
+
 .experiment-metrics-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2393,6 +2418,44 @@ html, body {
 
 .exp-metric-delta .exp-metric-val {
   font-weight: 800;
+}
+
+.scenario-risk-level {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.scenario-risk-level strong {
+  color: var(--text-main);
+}
+
+.scenario-email-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 8px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.scenario-email-alert button {
+  flex: 0 0 auto;
+  border: 1px solid #b91c1c;
+  border-radius: var(--radius-sm);
+  background: #fff7f7;
+  color: #991b1b;
+  padding: 6px 8px;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 /* How It Works Section */
