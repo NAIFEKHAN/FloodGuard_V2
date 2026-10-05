@@ -55,6 +55,10 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 
+# Forecast cache (runtime-generated, not source-controlled)
+data/cache/*.json
+!data/cache/.gitkeep
+
 # Keep reproducible reports/documentation
 !data/processed/*.md
 !data/processed/*.json

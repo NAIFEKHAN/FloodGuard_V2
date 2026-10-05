@@ -220,6 +220,7 @@
   let allEvents = [];
   let scenarioRecords = [];
   let activeScenarioMeta = null;
+  let activeRainfallMode = "scenario";
   let villagePolygonsMap = new Map();
   let shelterMarkersMap = new Map();
   let selectedVillageLgd = null;
@@ -2789,6 +2790,47 @@
     }
   }
 
+  function setRainfallInputMode(mode) {
+    activeRainfallMode = mode;
+    document.querySelectorAll(".mode-btn").forEach(btn => {
+      const matches = String(btn.dataset.mode) === String(mode);
+      btn.classList.toggle("active", matches);
+      btn.setAttribute("aria-pressed", matches ? "true" : "false");
+    });
+    const headerBadge = $("scenario-status-badge");
+    if (headerBadge && mode === "imd") {
+      const text = headerBadge.textContent || "IMD Auto Forecast";
+      headerBadge.textContent = text.includes("IMD") ? text : "IMD Auto Forecast";
+    }
+  }
+
+  async function fetchIMDAutoForecast() {
+    try {
+      showToast("Refreshing IMD auto forecast…");
+      const data = await api("/api/imd/forecast");
+      const recordCount = Number(data.record_count || (Array.isArray(data.records) ? data.records.length : 0) || 0);
+      const statusLabel = data.status === "available" ? "IMD Auto Forecast" : "IMD Cache / Unavailable";
+      const badgeEl = $("scenario-status-badge");
+      if (badgeEl) {
+        badgeEl.textContent = `${statusLabel} · ${recordCount} points`;
+      }
+      const outputEl = $("scenario-value");
+      if (outputEl) {
+        outputEl.textContent = data.status === "available"
+          ? `IMD forecast: ${recordCount} Nilgiris points available`
+          : "IMD forecast unavailable; Scenario Mode remains active";
+      }
+      if (data.warning) {
+        showToast(data.warning, data.status !== "available", null, 2200);
+      } else {
+        hideToast();
+      }
+    } catch (err) {
+      console.error("Failed to fetch IMD forecast:", err);
+      showToast("IMD forecast unavailable; Scenario Mode remains active.", true, fetchIMDAutoForecast);
+    }
+  }
+
   /**
    * Parse and Render Survey of India KMZ Administrative Boundaries
    */
@@ -3387,8 +3429,20 @@
     // Scenario Presets
     document.querySelectorAll(".preset-btn").forEach(btn => {
       btn.onclick = () => {
-        const scenario = btn.dataset.scenario;
-        applyScenario(scenario);
+        if (btn.dataset.scenario) {
+          setRainfallInputMode("scenario");
+          const scenario = btn.dataset.scenario;
+          applyScenario(scenario);
+        }
+        if (btn.dataset.mode) {
+          const mode = btn.dataset.mode;
+          setRainfallInputMode(mode);
+          if (mode === "imd") {
+            fetchIMDAutoForecast();
+          } else {
+            applyScenario("baseline");
+          }
+        }
       };
     });
 

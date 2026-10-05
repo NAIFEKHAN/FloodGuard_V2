@@ -105,6 +105,25 @@ def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "FloodGuard API"}
 
 
+@app.get("/api/imd/forecast")
+def get_imd_forecast(force_refresh: bool = Query(default=False, description="Force a live IMD fetch instead of using a valid cache.")) -> dict[str, object]:
+    """Return the latest configured IMD rainfall forecast, cached if needed."""
+    from services.imd_service import fetch_imd_forecast
+
+    result = fetch_imd_forecast(force=force_refresh)
+    if result.get("status") == "unavailable":
+        return {
+            **result,
+            "mode": "manual_scenario",
+            "warning": result.get("warning") or "IMD forecast unavailable; the existing rainfall Scenario Mode remains active.",
+        }
+    return {
+        **result,
+        "mode": "imd_auto_forecast",
+        "warning": result.get("warning") or "IMD auto forecast is active.",
+    }
+
+
 @app.get("/api/villages")
 def get_villages(limit: int = Query(default=102, ge=1, le=102)) -> dict[str, object]:
     rows = villages()
