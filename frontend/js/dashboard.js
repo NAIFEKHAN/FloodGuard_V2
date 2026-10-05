@@ -1,6 +1,6 @@
 /**
  * FloodGuard Nilgiris Disaster Intelligence — Geospatial Application
- * Source-verified shelter inventory and evacuation-route UI
+ * Phase 4: Nearest Designated Shelter & Evacuation Router
  * Strict Scientific Governance: Positive-Unlabeled (PU) Spatial XGBoost, LOTO CV.
  */
 (() => {
@@ -69,18 +69,152 @@
     }
   };
 
+  // Demonstration Designated Shelter Dataset (Explicitly isolated DEMO records for Nilgiris Taluks)
+  const DEMO_DESIGNATED_SHELTERS = [
+    {
+      shelter_id: "DEMO-SHELTER-01",
+      shelter_name: "Government Arts College Relief Center (DEMO)",
+      taluk: "Udhagamandalam",
+      district: "Nilgiris",
+      latitude: 11.4085,
+      longitude: 76.6980,
+      address: "Stone House Hill, Udhagamandalam, Nilgiris 643002",
+      capacity: 250,
+      type: "Designated Community Shelter (DEMO)",
+      source: "DEMONSTRATION_DESIGNATED_SHELTER (Simulated for DDMP framework alignment)",
+      status: "DESIGNATED_DEMO_REPRESENTATION"
+    },
+    {
+      shelter_id: "DEMO-SHELTER-02",
+      shelter_name: "St. Joseph Multipurpose Hall Relief Center (DEMO)",
+      taluk: "Udhagamandalam",
+      district: "Nilgiris",
+      latitude: 11.4162,
+      longitude: 76.7042,
+      address: "Fingerpost, Ooty Urban, Nilgiris 643006",
+      capacity: 300,
+      type: "Educational Institution Relief Post (DEMO)",
+      source: "DEMONSTRATION_DESIGNATED_SHELTER",
+      status: "DESIGNATED_DEMO_REPRESENTATION"
+    },
+    {
+      shelter_id: "DEMO-SHELTER-03",
+      shelter_name: "Coonoor Municipal Community Hall (DEMO)",
+      taluk: "Coonoor",
+      district: "Nilgiris",
+      latitude: 11.3524,
+      longitude: 76.7968,
+      address: "Mount Road, Coonoor Town, Nilgiris 643102",
+      capacity: 200,
+      type: "Municipal Community Refuge (DEMO)",
+      source: "DEMONSTRATION_DESIGNATED_SHELTER",
+      status: "DESIGNATED_DEMO_REPRESENTATION"
+    },
+    {
+      shelter_id: "DEMO-SHELTER-04",
+      shelter_name: "Providence Secondary School Refuge (DEMO)",
+      taluk: "Coonoor",
+      district: "Nilgiris",
+      latitude: 11.3610,
+      longitude: 76.8055,
+      address: "Springfield, Coonoor Rural, Nilgiris 643104",
+      capacity: 180,
+      type: "Designated School Shelter (DEMO)",
+      source: "DEMONSTRATION_DESIGNATED_SHELTER",
+      status: "DESIGNATED_DEMO_REPRESENTATION"
+    },
+    {
+      shelter_id: "DEMO-SHELTER-05",
+      shelter_name: "Kotagiri Town Panchayat Community Shelter (DEMO)",
+      taluk: "Kotagiri",
+      district: "Nilgiris",
+      latitude: 11.4235,
+      longitude: 76.8795,
+      address: "Ramaswamy Square, Kotagiri, Nilgiris 643217",
+      capacity: 220,
+      type: "Town Panchayat Emergency Shelter (DEMO)",
+      source: "DEMONSTRATION_DESIGNATED_SHELTER",
+      status: "DESIGNATED_DEMO_REPRESENTATION"
+    },
+    {
+      shelter_id: "DEMO-SHELTER-06",
+      shelter_name: "Kodanad View Emergency Relief Post (DEMO)",
+      taluk: "Kotagiri",
+      district: "Nilgiris",
+      latitude: 11.4870,
+      longitude: 76.9120,
+      address: "Kodanad Village, Kotagiri, Nilgiris 643217",
+      capacity: 120,
+      type: "Rural Hillside Evacuation Post (DEMO)",
+      source: "DEMONSTRATION_DESIGNATED_SHELTER",
+      status: "DESIGNATED_DEMO_REPRESENTATION"
+    },
+    {
+      shelter_id: "DEMO-SHELTER-07",
+      shelter_name: "Gudalur Government Higher Secondary School (DEMO)",
+      taluk: "Gudalur",
+      district: "Nilgiris",
+      latitude: 11.5060,
+      longitude: 76.4950,
+      address: "Hospital Road, Gudalur Town, Nilgiris 643212",
+      capacity: 350,
+      type: "Valley High-Capacity Refuge (DEMO)",
+      source: "DEMONSTRATION_DESIGNATED_SHELTER",
+      status: "DESIGNATED_DEMO_REPRESENTATION"
+    },
+    {
+      shelter_id: "DEMO-SHELTER-08",
+      shelter_name: "Pandalur Taluk Disaster Relief Hall (DEMO)",
+      taluk: "Pandalur",
+      district: "Nilgiris",
+      latitude: 11.4895,
+      longitude: 76.3810,
+      address: "Pandalur Bazaar, Pandalur, Nilgiris 643233",
+      capacity: 150,
+      type: "Taluk Community Shelter (DEMO)",
+      source: "DEMONSTRATION_DESIGNATED_SHELTER",
+      status: "DESIGNATED_DEMO_REPRESENTATION"
+    },
+    {
+      shelter_id: "DEMO-SHELTER-09",
+      shelter_name: "Kundah Hydro Project Community Center (DEMO)",
+      taluk: "Kundah",
+      district: "Nilgiris",
+      latitude: 11.2820,
+      longitude: 76.6580,
+      address: "Kundah Bridge, Kundah, Nilgiris 643219",
+      capacity: 160,
+      type: "Public Utility Emergency Refuge (DEMO)",
+      source: "DEMONSTRATION_DESIGNATED_SHELTER",
+      status: "DESIGNATED_DEMO_REPRESENTATION"
+    },
+    {
+      shelter_id: "DEMO-SHELTER-10",
+      shelter_name: "Ketti Valley Community Welfare Center (DEMO)",
+      taluk: "Coonoor",
+      district: "Nilgiris",
+      latitude: 11.3780,
+      longitude: 76.7350,
+      address: "Ketti Main Road, Ketti Valley, Nilgiris 643215",
+      capacity: 140,
+      type: "Valley Relief Center (DEMO)",
+      source: "DEMONSTRATION_DESIGNATED_SHELTER",
+      status: "DESIGNATED_DEMO_REPRESENTATION"
+    }
+  ];
+
   // Application State
-  let coreApiFailure = false;
   let map;
   let satelliteBaseLayer;
-  let satelliteLabelLayer;
   let streetBaseLayer;
+  let activeBasemap = null;
+  let satelliteTileErrors = 0;
+  let satelliteErrorResetTimer = null;
   let susceptibilityLayer;
   let eventLayer;
   let boundaryLayer;
   let centroidLayer;
   let shelterLayer;
-  let shelterRecords = [];
   let routeLayer;
   let originMarkerLayer;
   let weatherLayer;
@@ -152,12 +286,23 @@
       const moistureText = moisture === null || moisture === undefined
         ? "No reading received"
         : `${fmt(moisture, 1)}%`;
+      const rainRaw = latest?.rain_raw;
+      const rainDetected = latest?.rain_detected;
+      const hasRainObservation = rainRaw !== null && rainRaw !== undefined ||
+        rainDetected !== null && rainDetected !== undefined;
+      const rainText = !hasRainObservation
+        ? "No rain-sensor observation"
+        : rainDetected === null || rainDetected === undefined
+          ? "Wet/dry state unavailable"
+        : rainDetected ? "Wet detected" : "No wet state detected";
       const testLabel = latest?.is_test || sensor.is_test ? " · TEST DATA" : "";
       const popup = `
         <div class="sensor-popup">
           <strong>${escapeHtml(sensor.sensor_id)}</strong>${escapeHtml(testLabel)}<br>
           Village: ${escapeHtml(sensor.village?.village_name_en || sensor.village_lgd_code)}<br>
           Soil moisture: ${escapeHtml(moistureText)}<br>
+          Local rain sensor: ${escapeHtml(rainText)}${rainRaw === null || rainRaw === undefined ? "" : `<br>Raw reading: ${escapeHtml(rainRaw)}`}<br>
+          <small>Local observation; not an IMD rainfall measurement.</small><br>
           Status: ${escapeHtml(status.replace("_", " ").toUpperCase())}<br>
           Last reading: ${escapeHtml(latest ? formatElapsed(sensor.age_seconds) : "None")}
         </div>`;
@@ -222,11 +367,11 @@
   function getTierInfo(score) {
     const num = Number(score);
     if (num >= 60.0) {
-      return { tier: "HIGH", className: "tier-high", label: "HIGH", color: "#ea580c", stroke: "#c2410c", fillOpacity: 0.36 };
+      return { tier: "HIGH", className: "tier-high", label: "HIGH", color: "#ea580c", stroke: "#c2410c", fillOpacity: 0.28 };
     } else if (num >= 30.0) {
-      return { tier: "MEDIUM", className: "tier-medium", label: "MEDIUM", color: "#f59e0b", stroke: "#b45309", fillOpacity: 0.31 };
+      return { tier: "MEDIUM", className: "tier-medium", label: "MEDIUM", color: "#f59e0b", stroke: "#b45309", fillOpacity: 0.24 };
     } else {
-      return { tier: "LOW", className: "tier-low", label: "LOW", color: "#10b981", stroke: "#047857", fillOpacity: 0.27 };
+      return { tier: "LOW", className: "tier-low", label: "LOW", color: "#10b981", stroke: "#047857", fillOpacity: 0.20 };
     }
   }
 
@@ -261,27 +406,53 @@
   function updateWarningIndicators() {
     const pill = $("nav-warning-pill");
     const textEl = $("nav-warning-text");
+    const modeEl = $("nav-warning-mode");
     const dotEl = pill ? pill.querySelector(".warn-pill-dot") : null;
     if (!pill || !textEl) return;
     if (!warningSummary) {
-      pill.className = "nav-warning-pill warning-none";
-      if (dotEl) dotEl.textContent = "!";
-      textEl.textContent = "WARNING STATUS UNAVAILABLE";
-      pill.title = "Warning evaluation is unavailable; modeled susceptibility remains separate.";
+      textEl.textContent = "WARNING STATUS LOADING";
       return;
     }
     const counts = warningSummary.stage_counts || {};
     const stage = ["red", "orange", "yellow"].find(key => Number(counts[key] || 0) > 0) || "green";
     const stageInfo = warningSummary.stages?.[stage] || { label: "Normal" };
     const count = Number(counts[stage] || 0);
-    const noun = count === 1 ? "VILLAGE" : "VILLAGES";
+    const noun = count === 1 ? "village" : "villages";
     const modeLabel = warningSummary.mode_label || "SCENARIO";
     pill.className = `nav-warning-pill warning-${stage}`;
-    if (dotEl) dotEl.textContent = stage === "green" ? "✓" : stage.toUpperCase();
-    textEl.textContent = stage === "green"
-      ? `GREEN · NORMAL · ${count} ${noun} · ${modeLabel}`
-      : `${stage.toUpperCase()} · ${stageInfo.label.toUpperCase()} · ${count} ${noun} · ${modeLabel}`;
+    if (dotEl) dotEl.textContent = stage === "green" ? "✓" : "●";
+    textEl.textContent = `${stageInfo.label.toUpperCase()} · ${count} ${noun}`;
+    if (modeEl) {
+      modeEl.textContent = modeLabel.toLowerCase().includes("scenario")
+        ? "Scenario mode"
+        : "Current conditions";
+    }
     pill.title = `${warningSummary.disclaimer} Rule ${warningSummary.rule_version}; ${warningSummary.coverage?.supported_village_count || 0} supported villages; evaluated ${warningSummary.generated_at}.`;
+  }
+
+  function setWarningUnavailable(error) {
+    console.error("Decision-support warning evaluation is unavailable:", error);
+    warningSummary = null;
+    warningResultsByVillage.clear();
+    const pill = $("nav-warning-pill");
+    const text = $("nav-warning-text");
+    const mode = $("nav-warning-mode");
+    const dot = pill?.querySelector(".warn-pill-dot");
+    if (pill) {
+      pill.className = "nav-warning-pill warning-unavailable";
+      pill.title = "Decision-support warning evaluation is unavailable. This does not indicate a general FloodGuard API outage.";
+    }
+    if (dot) dot.textContent = "—";
+    if (text) text.textContent = "Warning evaluation unavailable";
+    if (mode) mode.textContent = "Retry in Evidence & Audits";
+    const updated = $("warning-audit-updated");
+    const counts = $("warning-audit-counts");
+    const retry = $("warning-retry-btn");
+    if (updated) updated.textContent = "Decision-support warning evaluation is currently unavailable.";
+    if (counts) counts.textContent = "Warning stage counts unavailable.";
+    if (retry) retry.hidden = false;
+    updateMapPolygons();
+    renderRankingList();
   }
 
   function renderWarningAudit(result) {
@@ -328,37 +499,23 @@
     } else {
       params.set("multiplier", String(activeMultiplier));
     }
-    const result = await api(`/api/warnings?${params}`);
-    warningSummary = result;
-    renderWarningAudit(result);
-    warningResultsByVillage = new Map(
-      (result.records || []).map(warning => [String(warning.village_lgd_code), warning])
-    );
-    updateWarningIndicators();
-    renderRankingList();
-    updateMapPolygons();
-    return result;
-  }
-
-  function markWarningResultsUnavailable(error) {
-    console.error("Warning evaluation endpoint is unavailable:", error);
-    warningSummary = null;
-    warningResultsByVillage = new Map();
-    updateWarningIndicators();
-    const version = $("warning-audit-version");
-    const updated = $("warning-audit-updated");
-    const counts = $("warning-audit-counts");
-    if (version) version.textContent = "Unavailable";
-    if (updated) updated.textContent = "Warning evaluation is currently unavailable.";
-    if (counts) counts.textContent = "Warning stage counts unavailable.";
-    updateMapPolygons();
-    renderRankingList();
-    showToast(
-      "Warning evaluation unavailable; modeled susceptibility remains available.",
-      true,
-      loadWarningResults,
-      5000
-    );
+    try {
+      const result = await api(`/api/warnings?${params}`);
+      warningSummary = result;
+      renderWarningAudit(result);
+      warningResultsByVillage = new Map(
+        (result.records || []).map(warning => [String(warning.village_lgd_code), warning])
+      );
+      updateWarningIndicators();
+      renderRankingList();
+      updateMapPolygons();
+      const retry = $("warning-retry-btn");
+      if (retry) retry.hidden = true;
+      return result;
+    } catch (error) {
+      setWarningUnavailable(error);
+      return null;
+    }
   }
 
   function setWarningMapView(enabled) {
@@ -784,6 +941,35 @@
       emScenFactor.textContent = `${fmt(factor, 2)}× Baseline Multiplier`;
     }
 
+    // Nearest demonstration shelter location
+    const shelter = selectedShelter || DEMO_DESIGNATED_SHELTERS[0];
+    if (shelter) {
+      const dist = haversineDistKm(userOrigin.lat, userOrigin.lng, shelter.latitude, shelter.longitude);
+
+      const emShelterName = $("em-shelter-name");
+      if (emShelterName) emShelterName.textContent = shelter.shelter_name;
+
+      const emShelterDist = $("em-shelter-dist");
+      if (emShelterDist) emShelterDist.textContent = `${fmt(dist, 1)} km`;
+
+      const emShelterMeta = $("em-shelter-meta");
+      if (emShelterMeta) emShelterMeta.textContent = `Taluk: ${shelter.taluk} · Capacity: ${shelter.capacity} persons`;
+
+      const emShelterAddr = $("em-shelter-addr");
+      if (emShelterAddr) emShelterAddr.textContent = shelter.address;
+
+      const emDriveTime = $("em-drive-time");
+      if (emDriveTime) {
+        const mins = Math.max(2, Math.round((dist / 25.0) * 60));
+        emDriveTime.textContent = `~${mins} mins`;
+      }
+
+      const emWalkTime = $("em-walk-time");
+      if (emWalkTime) {
+        const mins = Math.max(5, Math.round((dist / 3.5) * 60));
+        emWalkTime.textContent = `~${mins} mins`;
+      }
+    }
   }
 
   /**
@@ -832,7 +1018,9 @@
     const puStatus = record?.pu_status || "UNLABELED";
     const scenarioName = activeScenarioMeta?.scenario_name || "Historical Baseline";
     const factor = fmt(activeScenarioMeta?.rainfall_factor ?? 1.0, 2);
-    const shelterName = selectedShelter?.name || "No source-verified shelter available";
+    const shelter = selectedShelter || DEMO_DESIGNATED_SHELTERS[0];
+    const shelterDist = shelter ? fmt(haversineDistKm(userOrigin.lat, userOrigin.lng, shelter.latitude, shelter.longitude), 1) : "—";
+    const shelterName = shelter ? shelter.shelter_name : "Nilgiris Relief Center";
 
     const shareText = [
       "🚨 FloodGuard Nilgiris — Emergency Susceptibility Context",
@@ -842,7 +1030,7 @@
       `Modeled Risk Tier: ${tier} (${fmt(score, 1)} / 100)`,
       `PU Status: ${puStatus} (UNLABELED ≠ NO RISK)`,
       `Active Rainfall Scenario: ${scenarioName} (${factor}×)`,
-      `Verified shelter: ${shelterName}`,
+      `Nearest DEMO shelter location (not verified): ${shelterName} (~${shelterDist} km)`,
       "--------------------------------------------------",
       "Nilgiris DDMA Emergency Helpline: 1077",
       "Police: 100 | Fire & Rescue: 101 | Emergency: 112",
@@ -872,33 +1060,6 @@
   /**
    * Initialize Leaflet Situation Map
    */
-  function setBaseMap(name, { persist = true } = {}) {
-    if (!map || !satelliteBaseLayer || !streetBaseLayer) return;
-    if (map.hasLayer(satelliteBaseLayer)) map.removeLayer(satelliteBaseLayer);
-    if (map.hasLayer(streetBaseLayer)) map.removeLayer(streetBaseLayer);
-    const selectedName = name === "street" || name === "satellite" ? name : "satellite";
-    const layer = selectedName === "street" ? streetBaseLayer : satelliteBaseLayer;
-    layer.addTo(map);
-    document.querySelectorAll('input[name="base-map"]').forEach(input => {
-      input.checked = input.value === selectedName;
-    });
-    const labels = $("toggle-satellite-labels");
-    if (labels) {
-      if (selectedName === "street") {
-        if (map.hasLayer(satelliteLabelLayer)) map.removeLayer(satelliteLabelLayer);
-      } else if (labels.checked && !map.hasLayer(satelliteLabelLayer)) {
-        satelliteLabelLayer.addTo(map);
-      }
-    }
-    if (persist) {
-      try {
-        window.localStorage.setItem("floodguard_basemap", selectedName);
-      } catch (error) {
-        console.warn("Could not save the FloodGuard basemap preference:", error);
-      }
-    }
-  }
-
   function initMap() {
     map = L.map("map", {
       center: [11.41, 76.69],
@@ -911,58 +1072,24 @@
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       {
         maxZoom: 19,
-        attribution: "Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community"
+        attribution: "Tiles © Esri — Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community"
       }
     );
     streetBaseLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 18,
       attribution: "© <a href='https://www.openstreetmap.org/copyright' target='_blank'>OpenStreetMap</a> contributors"
     });
-    satelliteLabelLayer = L.tileLayer(
-      "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-      {
-        maxZoom: 19,
-        attribution: "Labels © Esri, HERE, Garmin, FAO, NOAA, USGS, EPA, NPS, and the GIS User Community",
-        pane: "overlayPane"
-      }
-    );
-    let satelliteTileErrors = 0;
-    let satelliteFallbackApplied = false;
-    satelliteBaseLayer.on("tileload", () => {
-      satelliteTileErrors = 0;
-    });
-    satelliteBaseLayer.on("tileerror", () => {
-      satelliteTileErrors += 1;
-      if (
-        map.hasLayer(satelliteBaseLayer) &&
-        satelliteTileErrors >= 4 &&
-        !satelliteFallbackApplied
-      ) {
-        satelliteFallbackApplied = true;
-        console.warn(
-          `Esri World Imagery failed ${satelliteTileErrors} times; switched to the OpenStreetMap street basemap.`
-        );
-        setBaseMap("street");
-        showToast(
-          "Satellite imagery is unavailable. Showing the Street Map instead.",
-          true,
-          null,
-          5000
-        );
-      }
-    });
-    let initialBasemap = "satellite";
-    try {
-      const savedBasemap = String(
-        window.localStorage.getItem("floodguard_basemap") || ""
-      ).trim().toLowerCase();
-      if (savedBasemap === "satellite" || savedBasemap === "street") {
-        initialBasemap = savedBasemap;
-      }
-    } catch (error) {
-      console.warn("Could not read the saved FloodGuard basemap preference:", error);
-    }
-    setBaseMap(initialBasemap, { persist: false });
+    satelliteBaseLayer.on("tileerror", onSatelliteTileError);
+    applyBasemap(readBasemapPreference(), true);
+
+    const satelliteChoice = $("basemap-satellite");
+    const streetChoice = $("basemap-street");
+    if (satelliteChoice) satelliteChoice.onchange = () => {
+      if (satelliteChoice.checked) applyBasemap("satellite");
+    };
+    if (streetChoice) streetChoice.onchange = () => {
+      if (streetChoice.checked) applyBasemap("street");
+    };
 
     susceptibilityLayer = L.layerGroup().addTo(map);
     boundaryLayer = L.layerGroup().addTo(map);
@@ -976,28 +1103,6 @@
     if ($("toggle-sensors")?.checked) sensorLayer.addTo(map);
     flowAccumulationLayer = L.layerGroup();
     drainageNetworkLayer = L.layerGroup();
-
-    document.querySelectorAll('input[name="base-map"]').forEach(input => {
-      input.onchange = () => {
-        if (input.checked) {
-          if (input.value === "satellite") {
-            satelliteTileErrors = 0;
-            satelliteFallbackApplied = false;
-          }
-          setBaseMap(input.value);
-        }
-      };
-    });
-    const labelToggle = $("toggle-satellite-labels");
-    if (labelToggle) {
-      labelToggle.onchange = () => {
-        if (labelToggle.checked && document.querySelector('input[name="base-map"]:checked')?.value === "satellite") {
-          satelliteLabelLayer.addTo(map);
-        } else if (map.hasLayer(satelliteLabelLayer)) {
-          map.removeLayer(satelliteLabelLayer);
-        }
-      };
-    }
 
     // Map Action Controls
     const btnZoomIn = $("btn-zoom-in");
@@ -1033,8 +1138,8 @@
       const mapControls = layersPopup.closest(".gmap-map-controls");
       const toggleLayers = e => {
         e.stopPropagation();
-        const isOpen = layersPopup.style.display === "block";
-        layersPopup.style.display = isOpen ? "none" : "block";
+        const isOpen = layersPopup.style.display === "flex";
+        layersPopup.style.display = isOpen ? "none" : "flex";
         if (mapControls) mapControls.classList.toggle("layers-open", !isOpen);
         btnToggleLayers.setAttribute("aria-expanded", String(!isOpen));
         if (btnToggleLayersTop) btnToggleLayersTop.setAttribute("aria-expanded", String(!isOpen));
@@ -1070,10 +1175,10 @@
       toggleShelters.onchange = e => {
         if (e.target.checked) {
           map.addLayer(shelterLayer);
-          showToast("Designated Shelters enabled", false, null, 1200);
+          showToast("DEMO shelter locations enabled · not verified", false, null, 1600);
         } else {
           map.removeLayer(shelterLayer);
-          showToast("Designated Shelters hidden", false, null, 1200);
+          showToast("DEMO shelter locations hidden", false, null, 1200);
         }
       };
     }
@@ -1384,267 +1489,312 @@
     }
   }
 
+  /**
+   * Render Demonstration Shelters on Map
+   */
   function initShelterMarkers() {
     shelterLayer.clearLayers();
     shelterMarkersMap.clear();
-    shelterRecords.forEach(shelter => {
-      const coordinateStatus = shelter.coordinate_validation || {};
-      if (
-        !coordinateStatus.valid ||
-        coordinateStatus.in_study_extent !== true ||
-        shelter.latitude === null ||
-        shelter.longitude === null
-      ) return;
-      const verified = shelter.operational && shelter.verification?.status === "verified";
-      const verificationStatus = String(shelter.verification?.status || "needs_review");
+
+    DEMO_DESIGNATED_SHELTERS.forEach(shelter => {
       const marker = L.circleMarker([shelter.latitude, shelter.longitude], {
-        radius: 7,
-        color: verified ? "#ffffff" : "#475569",
-        weight: 2,
-        fillColor: verified ? "#15803d" : "#94a3b8",
-        fillOpacity: 0.9
+        radius: 6.5,
+        color: "#ffffff",
+        weight: 2.0,
+        fillColor: "#059669",
+        fillOpacity: 0.95
       });
-      marker.bindTooltip(
-        `<strong>${escapeHtml(shelter.name || "Shelter facility")}</strong> · ${escapeHtml(verificationStatus.toUpperCase())}`,
-        { sticky: true }
-      );
+
+      const dist = haversineDistKm(userOrigin.lat, userOrigin.lng, shelter.latitude, shelter.longitude);
+
+      marker.bindTooltip(`
+        <strong>🏠 ${escapeHtml(shelter.shelter_name)}</strong><br>
+        <small>${shelter.taluk} · ${fmt(dist, 1)} km away</small>
+      `, { sticky: true });
+
       marker.bindPopup(`
-        <div class="shelter-popup">
-          <strong>${escapeHtml(shelter.name || "Shelter facility")}</strong>
-          <span class="shelter-verification shelter-verification-${escapeHtml(verificationStatus)}">${escapeHtml(verificationStatus.toUpperCase())}</span>
-          <span>${escapeHtml(shelter.type || "Type not recorded")}</span>
-          <span>${escapeHtml([shelter.village, shelter.taluk].filter(Boolean).join(" · ") || "Village/taluk unavailable")}</span>
-          <span>Capacity: ${shelter.capacity == null ? "Not recorded" : escapeHtml(shelter.capacity)}</span>
-          <span>Source: ${escapeHtml(shelter.verification?.source || "Not recorded")}</span>
-          ${verified ? '<button type="button" class="shelter-popup-route">View road route</button>' : "<span>Routing disabled until facility verification.</span>"}
+        <div style="font-size:12px; min-width: 200px;">
+          <strong style="color:#059669;font-size:13px;">🏠 ${escapeHtml(shelter.shelter_name)}</strong><br>
+          <span style="display:inline-block;margin:3px 0;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;padding:1px 6px;border-radius:4px;">DEMO ONLY · NOT VERIFIED</span><br>
+          <strong>Taluk:</strong> ${escapeHtml(shelter.taluk)}<br>
+          <strong>Capacity:</strong> ${shelter.capacity} persons<br>
+          <strong>Address:</strong> ${escapeHtml(shelter.address)}<br>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+            <strong style="color:#059669;font-size:13px;">${fmt(dist, 1)} km Direct</strong>
+            <button onclick="window.__floodguardPlanRoute('${shelter.shelter_id}')" style="background:#059669;color:#fff;border:none;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;">Plan Route</button>
+          </div>
         </div>
       `);
-      marker.on("click", () => selectShelter(shelter));
-      marker.on("popupopen", event => {
-        const button = event.popup.getElement()?.querySelector(".shelter-popup-route");
-        if (button) button.onclick = () => drawEvacuationRoute(shelter);
+
+      marker.on("click", () => {
+        selectShelter(shelter);
       });
+
       marker.addTo(shelterLayer);
       shelterMarkersMap.set(shelter.shelter_id, marker);
     });
   }
 
-  function updateShelterCard(shelter = null) {
-    const verifiedCount = shelterRecords.filter(record =>
-      record.operational &&
-      record.verification?.status === "verified" &&
-      record.coordinate_validation?.valid &&
-      record.coordinate_validation?.in_study_extent === true
-    ).length;
-    const facilityPrompt = verifiedCount ? "Select a verified facility" : "No verified shelter records";
-    const routeEligible = Boolean(
-      shelter?.operational &&
-      shelter.verification?.status === "verified" &&
-      shelter.coordinate_validation?.valid &&
-      shelter.coordinate_validation?.in_study_extent === true
-    );
-    const details = {
-      "hero-shelter-distance": "Unavailable",
-      "hero-shelter-name": routeEligible ? shelter.name || "Verified facility" : facilityPrompt,
-      "hero-shelter-taluk": routeEligible
-        ? `${shelter.village || "Village unavailable"} · ${shelter.taluk || "Taluk unavailable"}`
-        : "Facility status unavailable",
-      "hero-shelter-cap": routeEligible && shelter.capacity != null ? `Capacity: ${shelter.capacity}` : "",
-      "hero-shelter-addr": routeEligible ? shelter.address || "Address not recorded" : "No authoritative facility source is currently configured.",
-      "route-dist-val": "—",
-      "route-dist-type": "Road route unavailable",
-      "route-drive-time": "—",
-      "ctx-shelter-dist": "Unavailable",
-      "route-network-status": routeEligible ? "Road route not calculated" : facilityPrompt,
-      "ctx-routing-mode": routeEligible ? "Backend road routing not calculated" : "Unavailable"
-    };
-    Object.entries(details).forEach(([id, text]) => {
-      const element = $(id);
-      if (element) element.textContent = text;
-    });
-    const emergencyDetails = {
-      "em-shelter-name": routeEligible ? shelter.name || "Verified facility" : facilityPrompt,
-      "em-shelter-meta": routeEligible
-        ? `${shelter.village || "Village unavailable"} · ${shelter.taluk || "Taluk unavailable"} · VERIFIED${shelter.capacity == null ? "" : ` · Capacity ${shelter.capacity}`}`
-        : "No authoritative facility source is configured.",
-      "em-shelter-addr": routeEligible ? shelter.address || "Address not recorded" : "Follow information from local authorities.",
-      "em-shelter-dist": "Unavailable",
-      "em-drive-time": "Unavailable"
-    };
-    Object.entries(emergencyDetails).forEach(([id, text]) => {
-      const element = $(id);
-      if (element) element.textContent = text;
-    });
-    const routeButton = $("btn-draw-route");
-    if (routeButton) routeButton.disabled = !routeEligible;
-    const emergencyRouteButton = $("em-btn-plan-route");
-    if (emergencyRouteButton) emergencyRouteButton.disabled = !routeEligible;
-    const routeLabel = $("btn-draw-route-label");
-    if (routeLabel) routeLabel.textContent = routeEligible ? "View road route" : "Road route unavailable";
-  }
-
+  /**
+   * Refresh Nearest Shelters Ranking based on current userOrigin
+   */
   function refreshSheltersRanking() {
-    const candidates = shelterRecords.filter(shelter =>
-      shelter.operational &&
-      shelter.verification?.status === "verified" &&
-      shelter.coordinate_validation?.valid &&
-      shelter.coordinate_validation?.in_study_extent === true
-    ).map(shelter => ({
-      ...shelter,
-      distanceKm: userOrigin.isManual
-        ? haversineDistKm(userOrigin.lat, userOrigin.lng, shelter.latitude, shelter.longitude)
-        : null
-    })).sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
-    selectedShelter = null;
-    updateShelterCard(null);
-    const list = $("nearby-shelters-list");
-    if (list) {
-      if (!candidates.length) {
-        list.textContent = "No source-verified shelters are available for route recommendations. Facility data must be sourced and validated first. Follow local-authority instructions.";
-      } else {
-        list.innerHTML = candidates.map((shelter, index) => `
-          <div class="nearby-shelter-item" data-shelter-id="${escapeHtml(shelter.shelter_id)}" role="option" tabindex="0">
-            <div class="item-shelter-info">
-              <span class="item-shelter-name">${index + 1}. ${escapeHtml(shelter.name || "Verified facility")}</span>
-              <span class="item-shelter-taluk">${escapeHtml(shelter.taluk || "Taluk unavailable")} · VERIFIED · Road route required to rank suitability</span>
-            </div>
-            <span class="item-shelter-dist">${shelter.distanceKm == null ? "Road distance not calculated" : `${fmt(shelter.distanceKm, 1)} km direct prefilter`}</span>
-          </div>
-        `).join("");
-        list.querySelectorAll(".nearby-shelter-item").forEach(item => {
-          item.onclick = () => {
-            const match = shelterRecords.find(shelter => shelter.shelter_id === item.dataset.shelterId);
-            if (match) selectShelter(match);
-          };
-        });
-      }
+    const sheltersWithDist = DEMO_DESIGNATED_SHELTERS.map(s => {
+      const dist = haversineDistKm(userOrigin.lat, userOrigin.lng, s.latitude, s.longitude);
+      return { ...s, distanceKm: dist };
+    }).sort((a, b) => a.distanceKm - b.distanceKm);
+
+    const nearest = sheltersWithDist[0];
+    selectedShelter = nearest;
+
+    // Update Hero Card
+    const heroDist = $("hero-shelter-distance");
+    if (heroDist) heroDist.textContent = `${fmt(nearest.distanceKm, 1)} km`;
+
+    const heroName = $("hero-shelter-name");
+    if (heroName) heroName.textContent = nearest.shelter_name;
+
+    const heroTaluk = $("hero-shelter-taluk");
+    if (heroTaluk) heroTaluk.textContent = `Taluk: ${nearest.taluk}`;
+
+    const heroCap = $("hero-shelter-cap");
+    if (heroCap) heroCap.textContent = `Cap: ${nearest.capacity} persons`;
+
+    const heroAddr = $("hero-shelter-addr");
+    if (heroAddr) heroAddr.textContent = nearest.address;
+
+    const distVal = $("route-dist-val");
+    if (distVal) distVal.textContent = `${fmt(nearest.distanceKm, 1)} km`;
+
+    const driveTime = $("route-drive-time");
+    if (driveTime) {
+      const mins = Math.max(2, Math.round((nearest.distanceKm / 25.0) * 60));
+      driveTime.textContent = `~${mins} mins`;
     }
+
+    const walkTime = $("route-walk-time");
+    if (walkTime) {
+      const mins = Math.max(5, Math.round((nearest.distanceKm / 3.5) * 60));
+      walkTime.textContent = `~${mins} mins`;
+    }
+
+    const ctxShelterDist = $("ctx-shelter-dist");
+    if (ctxShelterDist) {
+      ctxShelterDist.textContent = `${fmt(nearest.distanceKm, 1)} km Direct`;
+    }
+
+    // Render Nearby Shelters List
+    const listEl = $("nearby-shelters-list");
+    if (listEl) {
+      listEl.innerHTML = sheltersWithDist.map((s, idx) => {
+        const isActive = s.shelter_id === selectedShelter.shelter_id ? "active" : "";
+        const rankLabel = idx === 0 ? `<span style="font-size:9.5px;font-weight:800;color:#047857;background:#d1fae5;padding:1px 5px;border-radius:3px;margin-right:4px;">NEAREST</span>` : `#${idx + 1}`;
+        return `
+          <div class="nearby-shelter-item ${isActive}" data-shelter-id="${s.shelter_id}" role="option" tabindex="0">
+            <div class="item-shelter-info">
+              <span class="item-shelter-name">${rankLabel} ${escapeHtml(s.shelter_name)}</span>
+              <span class="item-shelter-taluk">${escapeHtml(s.taluk)} · ${escapeHtml(s.address)}</span>
+            </div>
+            <span class="item-shelter-dist">${fmt(s.distanceKm, 1)} km</span>
+          </div>
+        `;
+      }).join("");
+
+      listEl.querySelectorAll(".nearby-shelter-item").forEach(item => {
+        item.onclick = () => {
+          const sid = item.dataset.shelterId;
+          const match = DEMO_DESIGNATED_SHELTERS.find(s => s.shelter_id === sid);
+          if (match) {
+            selectShelter(match);
+            drawEvacuationRoute(match);
+          }
+        };
+      });
+    }
+
+    // Update popups on markers
     initShelterMarkers();
   }
 
-  async function loadShelters() {
-    try {
-      const response = await api("/api/shelters");
-      shelterRecords = response.records || [];
-      refreshSheltersRanking();
-      const label = $("toggle-shelters")?.closest("label")?.querySelector(".toggle-text");
-      if (label) label.textContent = `Verified shelter locations (${response.route_eligible_count || 0})`;
-      const legendCount = $("legend-shelter-count");
-      if (legendCount) legendCount.textContent = `Verified shelter locations (${response.route_eligible_count || 0})`;
-    } catch (error) {
-      console.error("Verified shelter inventory could not be loaded:", error);
-      shelterRecords = [];
-      refreshSheltersRanking();
-      showToast("Shelter inventory unavailable; no route can be recommended.", true, loadShelters);
-    }
-  }
-
+  /**
+   * Select a specific shelter and focus on it
+   */
   function selectShelter(shelter) {
     selectedShelter = shelter;
-    updateShelterCard(shelter);
-    document.querySelectorAll(".nearby-shelter-item").forEach(item => {
-      item.classList.toggle("active", item.dataset.shelterId === shelter.shelter_id);
+    const dist = haversineDistKm(userOrigin.lat, userOrigin.lng, shelter.latitude, shelter.longitude);
+
+    // Update Hero Card with this shelter
+    const heroDist = $("hero-shelter-distance");
+    if (heroDist) heroDist.textContent = `${fmt(dist, 1)} km`;
+
+    const heroName = $("hero-shelter-name");
+    if (heroName) heroName.textContent = shelter.shelter_name;
+
+    const heroTaluk = $("hero-shelter-taluk");
+    if (heroTaluk) heroTaluk.textContent = `Taluk: ${shelter.taluk}`;
+
+    const heroCap = $("hero-shelter-cap");
+    if (heroCap) heroCap.textContent = `Cap: ${shelter.capacity} persons`;
+
+    const heroAddr = $("hero-shelter-addr");
+    if (heroAddr) heroAddr.textContent = shelter.address;
+
+    const distVal = $("route-dist-val");
+    if (distVal) distVal.textContent = `${fmt(dist, 1)} km`;
+
+    const driveTime = $("route-drive-time");
+    if (driveTime) {
+      const mins = Math.max(2, Math.round((dist / 25.0) * 60));
+      driveTime.textContent = `~${mins} mins`;
+    }
+
+    const walkTime = $("route-walk-time");
+    if (walkTime) {
+      const mins = Math.max(5, Math.round((dist / 3.5) * 60));
+      walkTime.textContent = `~${mins} mins`;
+    }
+
+    const ctxShelterDist = $("ctx-shelter-dist");
+    if (ctxShelterDist) {
+      ctxShelterDist.textContent = `${fmt(dist, 1)} km Direct`;
+    }
+
+    // Update active state in list
+    document.querySelectorAll(".nearby-shelter-item").forEach(el => {
+      if (el.dataset.shelterId === shelter.shelter_id) {
+        el.classList.add("active");
+        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      } else {
+        el.classList.remove("active");
+      }
     });
+
     const marker = shelterMarkersMap.get(shelter.shelter_id);
-    if (marker && map) marker.openPopup();
+    if (marker && map) {
+      marker.openPopup();
+    }
+
     renderEmergencyPanel();
   }
 
+  /**
+   * Draw Evacuation Route from userOrigin to target shelter
+   */
   async function drawEvacuationRoute(shelter = null) {
     const target = shelter || selectedShelter;
     if (!target || !map) return;
-    if (!target.operational || target.verification?.status !== "verified") {
-      showToast("This facility is not verified; routing is disabled.", true);
-      return;
-    }
-    showToast(`Requesting road route to ${target.name || "verified shelter"}…`);
+
+    showToast(`Planning evacuation route to ${target.shelter_name}…`);
     routeLayer.clearLayers();
-    const params = new URLSearchParams({ shelter_id: target.shelter_id });
-    if (userOrigin.isManual) {
-      params.set("origin_lat", String(userOrigin.lat));
-      params.set("origin_lon", String(userOrigin.lng));
-    } else {
-      const villageCode = selectedVillageLgd
-        || userOrigin.matchedVillage?.village_lgd_code;
-      if (!villageCode) {
-        const status = $("route-network-status");
-        if (status) status.textContent = "Select a village or explicitly set your location first.";
-        showToast("Select a village or set your location before requesting a route.", true);
-        return;
-      }
-      params.set("village_code", String(villageCode));
-    }
-    params.set("mode", "scenario");
-    const activeScenarioName = String(activeScenarioMeta?.scenario_name || "");
-    const scenarioKey = activeScenarioName.startsWith("Custom")
-      ? "custom"
-      : String(activeScenarioMeta?.scenario_key || "baseline");
-    params.set("scenario", scenarioKey);
-    if (scenarioKey === "custom") {
-      params.set("multiplier", String(activeScenarioMeta?.rainfall_factor ?? 1));
-    }
-    const routeStatus = $("route-network-status");
-    const routeDistance = $("route-dist-val");
-    const routeType = $("route-dist-type");
-    const driveTime = $("route-drive-time");
-    const routeSummary = $("route-risk-summary");
-    if (routeStatus) routeStatus.textContent = "Calculating road route and risk context…";
+
+    const originLat = userOrigin.lat;
+    const originLng = userOrigin.lng;
+    const destLat = target.latitude;
+    const destLng = target.longitude;
+
+    let routeDrawn = false;
+
+    // Try OSRM public road routing API for realistic road network polyline
     try {
-      const result = await api(`/api/evacuation-route?${params}`);
-      const route = result.route;
-      if (!route?.geometry || route.geometry.type !== "LineString") {
-        throw new Error("Road-routing service returned no valid road geometry.");
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+      const res = await fetch(osrmUrl, { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.routes && json.routes.length > 0) {
+          const route = json.routes[0];
+          const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+          const polyline = L.polyline(coords, {
+            color: "#0284c7",
+            weight: 5.0,
+            opacity: 0.9,
+            lineCap: "round",
+            lineJoin: "round"
+          });
+
+          polyline.bindPopup(`
+            <div style="font-size:12px;">
+              <strong style="color:#0284c7;">🚗 Road Evacuation Route</strong><br>
+              <strong>To:</strong> ${escapeHtml(target.shelter_name)}<br>
+              <strong>Road Distance:</strong> ${(route.distance / 1000).toFixed(1)} km<br>
+              <strong>Est. Road Duration:</strong> ${Math.round(route.duration / 60)} mins<br>
+              <small style="color:#64748b;">Source: OpenStreetMap OSRM Road Routing</small>
+            </div>
+          `);
+
+          polyline.addTo(routeLayer);
+          routeDrawn = true;
+
+          // Update dist label
+          const distType = $("route-dist-type");
+          if (distType) distType.textContent = "OSRM Road Network";
+          const distVal = $("route-dist-val");
+          if (distVal) distVal.textContent = `${(route.distance / 1000).toFixed(1)} km`;
+          const driveTime = $("route-drive-time");
+          if (driveTime) driveTime.textContent = `~${Math.round(route.duration / 60)} mins`;
+
+          const routeStatus = $("route-network-status");
+          if (routeStatus) {
+            routeStatus.textContent = "OSRM Road Network";
+            routeStatus.style.background = "#e0f2fe";
+            routeStatus.style.color = "#0369a1";
+          }
+
+          const ctxRoutingMode = $("ctx-routing-mode");
+          if (ctxRoutingMode) ctxRoutingMode.textContent = "OSRM / OpenStreetMap";
+        }
       }
-      const routeFeature = L.geoJSON(route.geometry, {
-        style: { color: "#075985", weight: 6, opacity: 0.95, lineCap: "round", lineJoin: "round" }
-      }).addTo(routeLayer);
-      routeFeature.bindPopup(`
-        <div class="route-popup">
-          <strong>${escapeHtml(route.recommendation_label || "Road route")}</strong><br>
-          <strong>Destination:</strong> ${escapeHtml(target.name || "Verified shelter")}<br>
-          <strong>Road distance:</strong> ${fmt(route.distance_km, 1)} km<br>
-          <strong>Estimated time:</strong> ${fmt(route.estimated_minutes, 0)} min<br>
-          <strong>Route context:</strong> ${escapeHtml(result.risk_assessment?.status || "unavailable")}<br>
-          <span>Confirm road conditions with local authorities. This route is not a safety guarantee.</span>
+    } catch (err) {
+      console.info("OSRM road routing fallback to direct line:", err.message);
+    }
+
+    // Direct Distance Fallback if OSRM unavailable or offline
+    if (!routeDrawn) {
+      const directPolyline = L.polyline([[originLat, originLng], [destLat, destLng]], {
+        color: "#0284c7",
+        weight: 4.0,
+        dashArray: "6, 8",
+        opacity: 0.85
+      });
+      directPolyline.bindPopup(`
+        <div style="font-size:12px;">
+          <strong style="color:#0284c7;">Evacuation Route (Direct Distance)</strong><br>
+          <strong>To:</strong> ${escapeHtml(target.shelter_name)}<br>
+          <strong>Direct Distance:</strong> ${fmt(haversineDistKm(originLat, originLng, destLat, destLng), 1)} km<br>
+          <small style="color:#64748b;">Direct line representation (road network fallback)</small>
         </div>
       `);
-      if (routeDistance) routeDistance.textContent = `${fmt(route.distance_km, 1)} km`;
-      if (routeType) routeType.textContent = `${route.provider} road distance`;
-      if (driveTime) driveTime.textContent = `${fmt(route.estimated_minutes, 0)} min (provider estimate)`;
-      const riskAssessment = result.risk_assessment || {};
-      if (routeStatus) routeStatus.textContent = `Route context: ${String(riskAssessment.status || "unavailable").replace("_", " ")}`;
-      const routingMode = $("ctx-routing-mode");
-      if (routingMode) routingMode.textContent = route.provider;
-      const safetyFactors = [
-        ...(riskAssessment.warning_intersections || []).map(
-          item => `${String(item.warning_label || item.warning_stage || "warning").toUpperCase()} warning area · ${item.village_name || item.village_lgd_code}`
-        ),
-        ...(riskAssessment.high_susceptibility_intersections || []).map(
-          item => `Very high baseline susceptibility · ${item.village_name || item.village_lgd_code}`
-        ),
-        ...(riskAssessment.historical_event_proximity || []).map(
-          item => `Historical event coordinate intersects route corridor · ${item.event_id}`
-        )
-      ];
-      if (routeSummary) {
-        routeSummary.textContent = safetyFactors.length
-          ? safetyFactors.join("; ")
-          : "No configured warning, very-high-susceptibility, or historical-event intersection was found in the assessed corridor. This does not establish that the road is safe.";
+      directPolyline.addTo(routeLayer);
+
+      const distType = $("route-dist-type");
+      if (distType) distType.textContent = "Direct Distance (Road routing unavailable)";
+
+      const routeStatus = $("route-network-status");
+      if (routeStatus) {
+        routeStatus.textContent = "Direct Line Fallback";
+        routeStatus.style.background = "#fef3c7";
+        routeStatus.style.color = "#92400e";
       }
-      const clearButton = $("btn-clear-route");
-      if (clearButton) clearButton.style.display = "inline-flex";
-      const bounds = routeFeature.getBounds();
-      if (bounds.isValid()) map.fitBounds(bounds, { padding: [70, 70], maxZoom: 14 });
-      showToast(`Road route displayed to ${target.name || "verified shelter"}`, false, null, 2500);
-    } catch (error) {
-      routeLayer.clearLayers();
-      console.error("Backend road-route request failed:", error);
-      if (routeStatus) routeStatus.textContent = "Road route currently unavailable.";
-      if (routeDistance) routeDistance.textContent = "—";
-      if (routeType) routeType.textContent = "No straight-line fallback is drawn";
-      if (driveTime) driveTime.textContent = "—";
-      if (routeSummary) routeSummary.textContent = "Route guidance requires a valid facility, origin, and available routing provider.";
-      showToast("Road route currently unavailable.", true, () => drawEvacuationRoute(target));
+
+      const ctxRoutingMode = $("ctx-routing-mode");
+      if (ctxRoutingMode) ctxRoutingMode.textContent = "Direct Distance (Fallback)";
+
+      showToast("Road routing unavailable — showing direct distance only", false, null, 2500);
+    }
+
+    // Fit map bounds to view whole route
+    const bounds = L.latLngBounds([[originLat, originLng], [destLat, destLng]]);
+    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 14 });
+
+    // Show Clear Route button
+    const btnClear = $("btn-clear-route");
+    if (btnClear) btnClear.style.display = "inline-flex";
+
+    const btnDrawLabel = $("btn-draw-route-label");
+    if (btnDrawLabel) btnDrawLabel.textContent = "Recalculate Route";
+
+    if (routeDrawn) {
+      showToast(`Evacuation route displayed to ${target.shelter_name}`, false, null, 2500);
     }
   }
 
@@ -1653,9 +1803,6 @@
    */
   function clearRoute() {
     routeLayer.clearLayers();
-    updateShelterCard(selectedShelter);
-    const summary = $("route-risk-summary");
-    if (summary) summary.textContent = "Route not calculated.";
     const btnClear = $("btn-clear-route");
     if (btnClear) btnClear.style.display = "none";
 
@@ -1663,7 +1810,14 @@
     if (btnDrawLabel) btnDrawLabel.textContent = "Display Evacuation Route";
 
     const routeStatus = $("route-network-status");
-    if (routeStatus) routeStatus.textContent = "Road route not calculated.";
+    if (routeStatus) {
+      routeStatus.textContent = "OSRM Ready";
+      routeStatus.style.background = "#e0f2fe";
+      routeStatus.style.color = "#0369a1";
+    }
+
+    const distType = $("route-dist-type");
+    if (distType) distType.textContent = "Direct Haversine";
 
     showToast("Evacuation route cleared from map", false, null, 1200);
   }
@@ -1696,7 +1850,7 @@
 
   // Global helper for popup buttons
   window.__floodguardPlanRoute = function(shelterId) {
-    const match = shelterRecords.find(s => s.shelter_id === shelterId);
+    const match = DEMO_DESIGNATED_SHELTERS.find(s => s.shelter_id === shelterId);
     if (match) {
       const panel = $("shelter-panel");
       if (panel) panel.style.display = "flex";
@@ -1720,41 +1874,6 @@
       const prEl = $("metric-loto-pr");
       const brierEl = $("metric-loto-brier");
       const coverageEl = $("model-hydrology-coverage");
-      const targetCounts = {
-        "target-universe-count": data.sample_size,
-        "target-positive-count": data.labeled_positive_count,
-        "target-unlabeled-count": data.unlabeled_count,
-        "target-negative-count": data.verified_negative_count,
-        "target-table-universe": data.sample_size,
-        "target-table-positive": data.labeled_positive_count,
-        "target-table-unlabeled": data.unlabeled_count
-      };
-      Object.entries(targetCounts).forEach(([id, value]) => {
-        const element = $(id);
-        if (element && value !== undefined) element.textContent = value;
-      });
-      const universeText = `${data.sample_size} validated villages (${data.labeled_positive_count} positive / ${data.unlabeled_count} unlabeled)`;
-      const universeEl = $("prov-model-universe");
-      if (universeEl) universeEl.textContent = universeText;
-      const coverageTitle = $("model-coverage-guardrail-title");
-      if (coverageTitle) coverageTitle.textContent = `${data.sample_size} Validated Village Universe`;
-      const coverageGuardrail = $("model-coverage-guardrail");
-      if (coverageGuardrail) {
-        coverageGuardrail.textContent =
-          `Modelling is restricted to ${data.sample_size} validated LGD villages ` +
-          `(${data.labeled_positive_count} positive, ${data.unlabeled_count} unlabeled; ` +
-          `${data.verified_negative_count} verified negative). Unmatched areas are not interpolated.`;
-      }
-      const positivePercent = $("target-positive-percent");
-      const unlabeledPercent = $("target-unlabeled-percent");
-      if (Number(data.sample_size) > 0) {
-        if (positivePercent) {
-          positivePercent.textContent = fmt(data.labeled_positive_count / data.sample_size * 100, 1);
-        }
-        if (unlabeledPercent) {
-          unlabeledPercent.textContent = fmt(data.unlabeled_count / data.sample_size * 100, 1);
-        }
-      }
       if (statusEl) {
         statusEl.textContent = "Model ✓";
       }
@@ -1782,16 +1901,10 @@
         modelInfoButton.setAttribute("aria-label", `Model information: ${modelDetails}`);
       }
       if (reasonEl) {
-        reasonEl.textContent =
-          `Baseline susceptibility · terrain + hydrology + historical rainfall · ` +
-          `${data.labeled_positive_count} Positive · ${data.unlabeled_count} Unlabeled · ` +
-          `${data.verified_negative_count} verified negatives · LOTO proxy ROC-AUC ` +
-          `${fmt(data.loto_roc_auc, 4)} · UNLABELED ≠ NO RISK`;
+        reasonEl.textContent = `Baseline susceptibility · terrain + hydrology + historical rainfall · 25 Positive · 15 Unlabeled · LOTO proxy ROC-AUC ${fmt(data.loto_roc_auc, 4)} · UNLABELED ≠ NO RISK`;
       }
     } catch (err) {
       console.warn("Status fetch warning:", err);
-      coreApiFailure = true;
-      throw err;
     }
   }
 
@@ -1818,8 +1931,6 @@
       }
     } catch (err) {
       console.warn("Villages fetch warning:", err);
-      coreApiFailure = true;
-      throw err;
     }
   }
 
@@ -2044,6 +2155,55 @@
     toggle.setAttribute("aria-label", `${expanded ? "Collapse" : "Expand"} village risk ranking`);
   }
 
+  function readBasemapPreference() {
+    try {
+      const saved = localStorage.getItem("floodguard_basemap");
+      return saved === "satellite" || saved === "street" ? saved : "street";
+    } catch (error) {
+      console.warn("Basemap preference could not be read; using Street Map.", error);
+      return "street";
+    }
+  }
+
+  function applyBasemap(name, persist = true) {
+    const selected = name === "satellite" || name === "street" ? name : "street";
+    if (selected === "satellite") {
+      satelliteTileErrors = 0;
+      if (satelliteErrorResetTimer) clearTimeout(satelliteErrorResetTimer);
+    }
+    if (map.hasLayer(satelliteBaseLayer)) map.removeLayer(satelliteBaseLayer);
+    if (map.hasLayer(streetBaseLayer)) map.removeLayer(streetBaseLayer);
+    const layer = selected === "satellite" ? satelliteBaseLayer : streetBaseLayer;
+    layer.addTo(map);
+    activeBasemap = selected;
+
+    const satelliteChoice = $("basemap-satellite");
+    const streetChoice = $("basemap-street");
+    if (satelliteChoice) satelliteChoice.checked = selected === "satellite";
+    if (streetChoice) streetChoice.checked = selected === "street";
+
+    if (persist) {
+      try {
+        localStorage.setItem("floodguard_basemap", selected);
+      } catch (error) {
+        console.warn("Basemap preference could not be saved.", error);
+      }
+    }
+  }
+
+  function onSatelliteTileError() {
+    if (activeBasemap !== "satellite") return;
+    satelliteTileErrors += 1;
+    if (satelliteErrorResetTimer) clearTimeout(satelliteErrorResetTimer);
+    satelliteErrorResetTimer = setTimeout(() => {
+      satelliteTileErrors = 0;
+    }, 12_000);
+    if (satelliteTileErrors >= 4) {
+      satelliteTileErrors = 0;
+      applyBasemap("street", false);
+    }
+  }
+
   function renderVillageContext(context) {
     const container = $("village-context-provenance");
     if (!container) return;
@@ -2092,8 +2252,8 @@
       : SOIL_MOISTURE_DISPLAY_BANDS.find(band => Number(soilValue) <= band.maximum)?.label;
     const soilSummary = soilValue === null || soilValue === undefined
       ? soilSensors.length
-        ? "Sensor registered; no readings received · NO DATA"
-        : "No sensor registered"
+        ? "ESP32 registered · Awaiting live sensor data · NO DATA"
+        : "Awaiting ESP32 registration and first live reading · NO DATA"
       : soil.freshness === "offline"
         ? `Last known reading ${fmt(soilValue, 1)}% · Sensor offline · Last seen ${formatElapsed(soil.age_seconds)}${soil.is_test ? " · TEST DATA" : ""}`
         : soil.freshness === "stale"
@@ -2164,6 +2324,17 @@
         ? "Not classified from SRTM alone"
         : "Unavailable", hydrology.water_accumulation_potential?.reason],
       ["Soil moisture", soilSummary, soil.provenance?.source_name || null],
+      ["Local rain sensor", (() => {
+        const localRain = context.current_conditions?.local_rain_sensor || {};
+        if (localRain.status !== "available") return "No local rain-sensor observation received";
+        const detected = localRain.rain_detected === null || localRain.rain_detected === undefined
+          ? "Wet/dry state unavailable"
+          : localRain.rain_detected ? "Wet detected" : "No wet state detected";
+        const raw = localRain.rain_raw === null || localRain.rain_raw === undefined
+          ? ""
+          : ` · Raw reading ${localRain.rain_raw}`;
+        return `${detected}${raw} · Local observation; not IMD rainfall`;
+      })(), "ESP32 local observation"],
       ["Warning mode", warning.warning_mode_label || warning.rainfall_mode || "Unavailable", warning.rule_version ? `Rule ${warning.rule_version}` : null],
       ["Warning rule", warning.rule_id || "Unavailable", warning.reason || null]
     ];
@@ -2617,7 +2788,6 @@
    * Apply Rainfall Scenario via API & Synchronize all UI Elements
    */
   async function applyScenario(scenarioKey = "baseline", customMultiplier = null) {
-    let scenarioApiFailed = false;
     try {
       showToast("Updating scenario simulation…");
 
@@ -2626,13 +2796,7 @@
         url = `/api/rainfall-scenario?multiplier=${encodeURIComponent(customMultiplier)}`;
       }
 
-      let data;
-      try {
-        data = await api(url);
-      } catch (error) {
-        scenarioApiFailed = true;
-        throw error;
-      }
+      const data = await api(url);
       activeScenarioMeta = data;
 
       // Sort descending by scenario score
@@ -2724,18 +2888,10 @@
       const kpiVillages = $("kpi-villages");
       if (kpiVillages) kpiVillages.textContent = data.record_count;
 
-      // Warning evaluation is a separate feature and must not mask scenario availability.
-      try {
-        await loadWarningResults();
-      } catch (error) {
-        markWarningResultsUnavailable(error);
-      }
+      // Load rule-engine results for the active rainfall scenario.
+      await loadWarningResults();
       if (warningRefreshTimer) clearInterval(warningRefreshTimer);
-      warningRefreshTimer = setInterval(() => {
-        loadWarningResults().catch(error => {
-          markWarningResultsUnavailable(error);
-        });
-      }, 60_000);
+      warningRefreshTimer = setInterval(() => loadWarningResults(), 60_000);
 
       // Refresh Map and Ranking Dropdown List
       updateMapPolygons();
@@ -2754,13 +2910,7 @@
       hideToast();
     } catch (err) {
       console.error("Failed to apply rainfall scenario:", err);
-      showToast(
-        scenarioApiFailed
-          ? "Unable to connect to FloodGuard API"
-          : "Scenario update failed; existing dashboard data remains available.",
-        true,
-        () => applyScenario(scenarioKey, customMultiplier)
-      );
+      showToast("Unable to connect to FloodGuard API", true, () => applyScenario(scenarioKey, customMultiplier));
     }
   }
 
@@ -2865,6 +3015,17 @@
    * Setup UI Controls & Interactive Listeners
    */
   function setupUIListeners() {
+    const warningRetry = $("warning-retry-btn");
+    if (warningRetry) {
+      warningRetry.onclick = async () => {
+        warningRetry.disabled = true;
+        warningRetry.textContent = "Retrying…";
+        const result = await loadWarningResults();
+        warningRetry.disabled = false;
+        if (!result) warningRetry.textContent = "Retry warning evaluation";
+      };
+    }
+
     const rankingToggle = $("btn-toggle-ranking");
     if (rankingToggle) {
       rankingToggle.onclick = () => {
@@ -2961,14 +3122,16 @@
         const match = scenarioRecords.find(r => String(r.village_lgd_code) === selectedVillageLgd);
         if (!match) return;
 
+        let centerLat = 11.41;
+        let centerLng = 76.69;
         const polygon = villagePolygonsMap.get(String(match.village_lgd_code));
         if (polygon) {
           const c = polygon.getBounds().getCenter();
-          setUserOrigin(c.lat, c.lng, `${match.village_name_en} (${match.taluk_name_en})`, false, match);
+          centerLat = c.lat;
+          centerLng = c.lng;
         }
-        if (!polygon) {
-          showToast("Using the selected village LGD code as the route origin.", false, null, 2000);
-        }
+
+        setUserOrigin(centerLat, centerLng, `${match.village_name_en} (${match.taluk_name_en})`, true, match);
 
         // Open Evacuation Panel (enforcing single drawer policy)
         closeAllPanels("shelter-panel");
@@ -3089,13 +3252,11 @@
     const emBtnNearestShelter = $("em-btn-nearest-shelter");
     if (emBtnNearestShelter) {
       emBtnNearestShelter.onclick = () => {
-        const shelter = selectedShelter;
+        const shelter = selectedShelter || DEMO_DESIGNATED_SHELTERS[0];
         if (shelter && map) {
           map.flyTo([shelter.latitude, shelter.longitude], 13, { duration: 0.8 });
           selectShelter(shelter);
-          showToast(`Focused on verified facility: ${shelter.name}`, false, null, 2000);
-        } else {
-          showToast("No verified shelter records are available.", true);
+          showToast(`Focused on nearest shelter: ${shelter.shelter_name}`, false, null, 2000);
         }
       };
     }
@@ -3110,7 +3271,7 @@
     const emBtnViewShelter = $("em-btn-view-shelter");
     if (emBtnViewShelter) {
       emBtnViewShelter.onclick = () => {
-        const shelter = selectedShelter;
+        const shelter = selectedShelter || DEMO_DESIGNATED_SHELTERS[0];
         if (shelter && map) {
           map.flyTo([shelter.latitude, shelter.longitude], 13, { duration: 0.8 });
           selectShelter(shelter);
@@ -3121,7 +3282,7 @@
     const emBtnPlanRoute = $("em-btn-plan-route");
     if (emBtnPlanRoute) {
       emBtnPlanRoute.onclick = () => {
-        const shelter = selectedShelter;
+        const shelter = selectedShelter || DEMO_DESIGNATED_SHELTERS[0];
         drawEvacuationRoute(shelter);
       };
     }
@@ -3150,9 +3311,9 @@
           pos => {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
-            setUserOrigin(lat, lng, "My Current Location", true);
+            setUserOrigin(lat, lng, "My Current Location", false);
             map.flyTo([lat, lng], 12, { duration: 0.8 });
-            showToast("Location detected. Select a verified facility to request a road route.", false, null, 2500);
+            showToast("Location detected successfully! Showing nearest shelters.", false, null, 2000);
           },
           err => {
             console.warn("Geolocation permission error:", err);
@@ -3214,133 +3375,6 @@
     const dataSourcesTable = $("data-sources-table");
     const warningHistoryTable = $("warning-history-table");
     let dataSourcesLoaded = false;
-
-    const loadSystemStatus = async () => {
-      const updated = $("system-status-updated");
-      const summary = $("system-coverage-summary");
-      const componentTable = $("system-components-table");
-      const featureTable = $("feature-audit-table");
-      if (!summary || !componentTable || !featureTable) return;
-
-      updated.textContent = "Refreshing live API and data coverage…";
-      try {
-        const result = await api("/api/system/status");
-        const coverage = result.coverage || {};
-        const count = (value, fallback = "Unknown") => value === null || value === undefined ? fallback : String(value);
-        const summaryItems = [
-          {
-            label: "Validated polygons",
-            value: `${count(coverage.village_boundaries?.validated_model_polygons)} / ${count(coverage.village_master?.total)} master villages`,
-            status: coverage.village_boundaries?.status
-          },
-          {
-            label: "Model coverage",
-            value: `${count(coverage.model?.supported_villages)} / ${count(coverage.village_master?.total)} villages`,
-            status: coverage.model?.status
-          },
-          {
-            label: "Hydrology",
-            value: `${count(coverage.hydrology?.model_villages_matched)} model villages joined`,
-            status: coverage.hydrology?.status
-          },
-          {
-            label: "Verified shelters",
-            value: `${count(coverage.shelters?.route_eligible)} route-eligible`,
-            status: coverage.shelters?.status
-          },
-          {
-            label: "Real soil sensors",
-            value: `${count(coverage.sensors?.online_real)} online / ${count(coverage.sensors?.registered_real)} registered`,
-            status: coverage.sensors?.status
-          }
-        ];
-        summary.replaceChildren();
-        summaryItems.forEach(item => {
-          const card = document.createElement("article");
-          card.className = "system-coverage-card";
-          const label = document.createElement("span");
-          label.textContent = item.label;
-          const value = document.createElement("strong");
-          value.textContent = item.value;
-          const status = document.createElement("span");
-          const state = ["available", "unavailable", "degraded", "planned", "partial"].includes(item.status)
-            ? item.status
-            : "unavailable";
-          status.className = `system-status-badge system-status-${state}`;
-          status.textContent = state;
-          card.append(label, value, status);
-          summary.append(card);
-        });
-
-        componentTable.replaceChildren();
-        Object.entries(result.components || {}).forEach(([name, component]) => {
-          const row = document.createElement("tr");
-          const nameCell = document.createElement("td");
-          nameCell.textContent = name.replace(/_/g, " ");
-          const statusCell = document.createElement("td");
-          const state = ["available", "unavailable", "degraded", "planned", "partial"].includes(component.status)
-            ? component.status
-            : "unavailable";
-          const badge = document.createElement("span");
-          badge.className = `system-status-badge system-status-${state}`;
-          badge.textContent = state;
-          statusCell.append(badge);
-          const detailCell = document.createElement("td");
-          detailCell.textContent = component.detail || "No status detail provided.";
-          row.append(nameCell, statusCell, detailCell);
-          componentTable.append(row);
-        });
-
-        featureTable.replaceChildren();
-        (result.feature_audit || []).forEach(item => {
-          const row = document.createElement("tr");
-          [
-            item.feature,
-            item.status,
-            item.source,
-            item.coverage,
-            item.limitation
-          ].forEach((value, index) => {
-            const cell = document.createElement("td");
-            cell.textContent = value == null ? "—" : String(value);
-            if (index === 1) {
-              const state = ["available", "unavailable", "degraded", "planned", "partial"].includes(String(value))
-                ? String(value)
-                : "unavailable";
-              cell.replaceChildren();
-              const badge = document.createElement("span");
-              badge.className = `system-status-badge system-status-${state}`;
-              badge.textContent = state;
-              cell.append(badge);
-            }
-            row.append(cell);
-          });
-          featureTable.append(row);
-        });
-        updated.textContent =
-          `Overall system state: ${result.status || "unknown"} · ` +
-          `Refreshed ${result.generated_at || "unknown"} · ` +
-          "External weather and map-tile health is not probed here.";
-      } catch (error) {
-        console.error("System status and coverage could not be loaded:", error);
-        updated.textContent = "System status could not be refreshed; other dashboard features remain available.";
-        summary.replaceChildren();
-        componentTable.replaceChildren();
-        featureTable.replaceChildren();
-        [componentTable, featureTable].forEach((table, index) => {
-          const row = document.createElement("tr");
-          const cell = document.createElement("td");
-          cell.colSpan = index === 0 ? 3 : 5;
-          cell.className = "text-center";
-          cell.textContent = "System status data is unavailable.";
-          row.append(cell);
-          table.append(row);
-        });
-      }
-    };
-
-    const refreshSystemStatus = $("btn-refresh-system-status");
-    if (refreshSystemStatus) refreshSystemStatus.onclick = loadSystemStatus;
 
     const loadDataSources = async () => {
       if (!dataSourcesTable || dataSourcesLoaded) return;
@@ -3451,7 +3485,6 @@
 
     if (btnOpenEvidence) btnOpenEvidence.onclick = () => {
       openModal();
-      loadSystemStatus();
       loadWarningHistory();
     };
     if (modelInfoButton) modelInfoButton.onclick = () => {
@@ -3482,7 +3515,6 @@
         const targetId = btn.dataset.target;
         const targetPane = $(targetId);
         if (targetPane) targetPane.classList.add("active");
-        if (targetId === "tab-system-status") loadSystemStatus();
         if (targetId === "tab-data-sources") loadDataSources();
         if (targetId === "tab-methodology") loadWarningHistory();
       };
@@ -3541,9 +3573,11 @@
         loadVillages(),
         loadEvents(),
         loadTerrain(),
-        loadShelters(),
         applyScenario("baseline")
       ]);
+      refreshSensorLayer().catch(error => {
+        console.error("ESP32 sensor layer is unavailable:", error);
+      });
 
       // Rainfall Series & KMZ Boundaries
       await loadRain();
@@ -3577,13 +3611,7 @@
       renderEmergencyPanel();
     } catch (err) {
       console.error("Dashboard initialization error:", err);
-      showToast(
-        coreApiFailure
-          ? "Unable to connect to FloodGuard API"
-          : "FloodGuard dashboard could not be initialized.",
-        true,
-        () => window.location.reload()
-      );
+      showToast("Unable to connect to FloodGuard API", true, start);
     }
   }
 

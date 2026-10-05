@@ -69,6 +69,7 @@ data/processed/*
 data/demo/*
 !data/demo/.gitkeep
 data/sensors.sqlite3*
+hardware/esp32_soil_moisture/secrets.h
 
 # ML artifacts
 model/artifacts/*

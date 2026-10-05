@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.app import sensor_store
 from backend.app.data_catalog import source_provenance
@@ -28,41 +28,75 @@ class SensorRegistration(BaseModel):
 
     sensor_id: str = Field(min_length=1, max_length=64)
     sensor_name: str = Field(min_length=1, max_length=120)
-    village_lgd_code: str = Field(min_length=1, max_length=32)
+    village_lgd_code: str | None = Field(default=None, min_length=1, max_length=32)
     latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
     longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
     sensor_type: Literal["soil_moisture"] = "soil_moisture"
     installed_at: datetime | None = None
     is_test: bool = False
 
-    @field_validator("sensor_id", "sensor_name", "village_lgd_code")
+    @field_validator("sensor_id", "sensor_name")
     @classmethod
     def strip_required_text(cls, value: str) -> str:
         stripped = value.strip()
         if not stripped:
             raise ValueError("must not be blank")
         return stripped
+
+    @field_validator("village_lgd_code")
+    @classmethod
+    def strip_village_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
+
+    @model_validator(mode="after")
+    def require_village_for_real_sensor(self) -> "SensorRegistration":
+        if not self.is_test and self.village_lgd_code is None:
+            raise ValueError("village_lgd_code is required for non-test sensors.")
+        return self
 
 
 class SensorReading(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sensor_id: str = Field(min_length=1, max_length=64)
-    village_lgd_code: str = Field(min_length=1, max_length=32)
+    village_lgd_code: str | None = Field(default=None, min_length=1, max_length=32)
     soil_moisture_percent: float = Field(
         strict=True, ge=0, le=100, allow_inf_nan=False
     )
     raw_value: int | None = Field(default=None, ge=0, le=10_000_000)
+    rain_raw: int | None = Field(default=None, strict=True, ge=0, le=10_000_000)
+    rain_detected: bool | None = None
     recorded_at: datetime | None = None
-    is_test: bool = False
+    is_test: bool | None = None
 
-    @field_validator("sensor_id", "village_lgd_code")
+    @field_validator("sensor_id")
     @classmethod
     def strip_required_text(cls, value: str) -> str:
         stripped = value.strip()
         if not stripped:
             raise ValueError("must not be blank")
         return stripped
+
+    @field_validator("village_lgd_code")
+    @classmethod
+    def strip_village_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
+
+    @model_validator(mode="after")
+    def require_village_for_explicit_real_reading(self) -> "SensorReading":
+        if self.is_test is False and self.village_lgd_code is None:
+            raise ValueError("village_lgd_code is required for non-test readings.")
+        return self
 
 
 @lru_cache(maxsize=1)
@@ -100,9 +134,17 @@ def _village_or_404(code: str) -> dict[str, str]:
 
 
 def _with_village(sensor: dict[str, object]) -> dict[str, object]:
-    village = _village_or_404(str(sensor["village_lgd_code"]))
+    code = sensor["village_lgd_code"]
+    if code is None:
+        return {
+            **sensor,
+            "village": None,
+            "record_class": "TEST / BENCH" if sensor["is_test"] else "PRODUCTION",
+        }
+    village = _village_or_404(str(code))
     return {
         **sensor,
+        "record_class": "TEST" if sensor["is_test"] else "PRODUCTION",
         "village": {
             "village_lgd_code": village["village_lgd_code"],
             "village_name_en": village["village_name_en"],
@@ -123,12 +165,18 @@ def register_sensor(
     payload: SensorRegistration,
     _: None = Depends(_require_sensor_key),
 ) -> dict[str, object]:
-    village = _village_or_404(payload.village_lgd_code)
+    village = (
+        _village_or_404(payload.village_lgd_code)
+        if payload.village_lgd_code is not None
+        else None
+    )
     try:
         sensor = sensor_store.register_sensor(
             sensor_id=payload.sensor_id,
             sensor_name=payload.sensor_name,
-            village_lgd_code=village["village_lgd_code"],
+            village_lgd_code=(
+                village["village_lgd_code"] if village is not None else None
+            ),
             latitude=payload.latitude,
             longitude=payload.longitude,
             sensor_type=payload.sensor_type,
@@ -146,12 +194,25 @@ def ingest_sensor_reading(
     _: None = Depends(_require_sensor_key),
 ) -> dict[str, object]:
     received_at = datetime.now(UTC)
+    registered_sensor = sensor_store.get_sensor(payload.sensor_id)
+    if registered_sensor is None:
+        raise HTTPException(status_code=404, detail="Sensor ID is not registered.")
+    if (
+        registered_sensor["is_test"] is False
+        and payload.village_lgd_code is None
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="village_lgd_code is required for non-test sensors.",
+        )
     try:
         result = sensor_store.insert_reading(
             sensor_id=payload.sensor_id,
             village_lgd_code=payload.village_lgd_code,
             soil_moisture_percent=payload.soil_moisture_percent,
             raw_value=payload.raw_value,
+            rain_raw=payload.rain_raw,
+            rain_detected=payload.rain_detected,
             recorded_at=(
                 _as_utc(payload.recorded_at)
                 if payload.recorded_at
@@ -177,6 +238,8 @@ def ingest_sensor_reading(
         "status": "accepted",
         "sensor_id": payload.sensor_id,
         "soil_moisture_percent": payload.soil_moisture_percent,
+        "rain_raw": latest["rain_raw"],
+        "rain_detected": latest["rain_detected"],
         "recorded_at": latest["recorded_at"],
         "received_at": latest["received_at"],
         "sensor_status": result["status"],

@@ -265,6 +265,22 @@ def get_village_context(
         **MODEL_METADATA["current_conditions"],
         "weather": {"status": Availability.UNAVAILABLE.value},
         "rainfall": {"status": rainfall_status, "data_type": "historical"},
+        "local_rain_sensor": {
+            "status": (
+                Availability.AVAILABLE.value
+                if soil_reading
+                and (
+                    soil_reading["rain_raw"] is not None
+                    or soil_reading["rain_detected"] is not None
+                )
+                else Availability.UNAVAILABLE.value
+            ),
+            "data_type": "local_observation",
+            "rain_raw": soil_reading["rain_raw"] if soil_reading else None,
+            "rain_detected": soil_reading["rain_detected"] if soil_reading else None,
+            "source": "ESP32 local observation",
+            "note": "Not an IMD rainfall measurement; not used as rainfall depth or warning input.",
+        },
         "soil_moisture": {
             "status": soil_status,
             "data_type": soil_moisture["data_type"],

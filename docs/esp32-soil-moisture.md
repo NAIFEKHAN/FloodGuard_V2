@@ -25,9 +25,11 @@ The sensor record has `sensor_id` (unique), `sensor_name`,
 `village_lgd_code`, optional latitude/longitude, `sensor_type` (currently only
 `soil_moisture`), optional `installed_at`, server `registered_at`, and an
 `is_test` flag. The reading record has a generated `reading_id`, sensor and LGD
-IDs, `soil_moisture_percent`, optional raw ADC value, observation
-`recorded_at`, server-set `received_at`, and `is_test`. The API key is never
-stored in the database.
+IDs, `soil_moisture_percent`, optional soil ADC value (`raw_value`), optional
+`rain_raw` and `rain_detected`, observation `recorded_at`, server-set
+`received_at`, and `is_test`. Existing SQLite databases are migrated
+additively; soil-only readings remain valid and rain fields stay null when not
+sent. The API key is never stored in the database.
 
 ## Authentication and API
 
@@ -40,7 +42,8 @@ $env:SENSOR_API_KEY = python -c "import secrets; print(secrets.token_urlsafe(32)
 $env:SENSOR_API_KEY
 ```
 
-The key must also be configured in the ESP32 sketch before upload. This shared
+The key must also be configured in the local, ignored `secrets.h` before
+upload. This shared
 key is a simple prototype mechanism, not per-device identity or production
 credential management. Do not use the device on an untrusted network; rotate
 the key if the device or firmware is exposed.
@@ -76,16 +79,30 @@ Content-Type: application/json
   "village_lgd_code": "635099",
   "soil_moisture_percent": 68.4,
   "raw_value": 1750,
-  "recorded_at": "2026-10-05T10:30:00+05:30"
+  "rain_raw": 2310,
+  "rain_detected": true
 }
 ```
 
 `soil_moisture_percent` must be finite and between 0 and 100. `raw_value` is
-kept separately. `recorded_at` is optional; if omitted, the server time is used
-for both timestamps. The server always sets `received_at`, which determines
-freshness. Unknown sensors are rejected, and the submitted LGD code must match
-the registered sensor. Test sensors/readings must be explicitly marked and
-cannot be mixed into an ordinary sensor record.
+kept separately. `rain_raw` and `rain_detected` are optional local sensor
+context; absent fields stay null. Send `rain_detected` only after testing a
+threshold for the actual module. Rain ADC data is not rainfall depth, IMD
+rainfall, or a rainfall-scenario multiplier, and it does not enter the model
+or warning engine. `recorded_at` is optional; if omitted, the server time is
+used for both timestamps. The server always sets `received_at`, which
+determines freshness. Unknown sensors are rejected, and the submitted LGD code
+must match the registered sensor. A reading cannot change the registration's
+real/test classification.
+
+For an authenticated bench device that is not installed in a supported
+village, register it with `is_test: true` and a null/omitted
+`village_lgd_code`. A reading from that registered test sensor may omit both
+`village_lgd_code` and `is_test`; the server inherits its test designation from
+the registration. Non-test registrations and readings remain village-bound.
+Unassigned bench data appears only in the sensor inventory, labelled
+`TEST / BENCH`; it is excluded from village context, village warnings, and
+map markers.
 
 Successful ingestion returns HTTP 202, for example:
 
@@ -94,6 +111,8 @@ Successful ingestion returns HTTP 202, for example:
   "status": "accepted",
   "sensor_id": "FG-NIL-001",
   "soil_moisture_percent": 68.4,
+  "rain_raw": null,
+  "rain_detected": null,
   "recorded_at": "2026-10-05T05:00:00+00:00",
   "received_at": "2026-10-05T05:02:00+00:00",
   "sensor_status": "online",
@@ -106,14 +125,14 @@ Read APIs:
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/sensors` | Authenticated registration; a sensor ID is unique |
-| `POST /api/sensors/readings` | Authenticated validated reading ingestion |
+| `POST /api/sensors/readings` | Authenticated soil reading with optional local rain context |
 | `GET /api/sensors` | Registered sensors, latest readings, freshness, village metadata |
 | `GET /api/sensors/{sensor_id}` | One sensor and its latest reading/status |
 | `GET /api/sensors/{sensor_id}/readings?limit=50` | Newest readings; limit is 1–500 |
 | `GET /api/villages/{village_code}/soil-moisture` | Latest village reading and provenance, or unavailable/null |
 | `GET /api/villages/{village_code}/context` | Existing context plus soil moisture and sensor metadata |
 
-The API returns `online` for a server-received reading no more than 10 minutes
+The API returns `online` for a server-received reading up to and including 10 minutes
 old, `stale` for more than 10 and up to 30 minutes, and `offline` after 30
 minutes. A registered sensor with no reading is `no_data`. Freshness is computed
 by the backend from server-side `received_at`; the frontend does not reimplement
@@ -130,11 +149,13 @@ includes sensor ID and recorded/received timestamps when there is a reading.
 ## Wiring overview
 
 Use the sensor manufacturer's documentation and the exact ESP32 board
-documentation. Generically, connect sensor power and ground to compatible
-board power/ground, and the analog output to a supported ADC input. Check that
-the sensor output voltage never exceeds the board's ADC input limit. This
-project does not assume a sensor module, supply voltage, wiring pin, or
-calibration scale.
+documentation. The known soil-moisture analog input is GPIO 34. The rain-sensor
+ADC pin is not recorded in project configuration; leave
+`RAIN_SENSOR_ADC_PIN = -1` until the actual wire/pin is confirmed. Generically,
+connect sensor power and ground to compatible board power/ground, and the
+analog output to a supported ADC input. Check that the sensor output voltage
+never exceeds the board's ADC input limit. This project does not assume a
+sensor module, supply voltage, rain wiring pin, or calibration scale.
 
 ## Calibration
 
@@ -173,12 +194,28 @@ landslide thresholds and are never used for warnings or risk calculations.
 4. Start the service from the repository root, listening on the LAN:
 
    ```powershell
-   python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+   $env:SENSOR_API_KEY = "YOUR_SENSOR_API_KEY"
+   python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
 
-5. Put the laptop's LAN IPv4 address in `SERVER_URL`, for example
-   `http://192.168.1.25:8000/api/sensors/readings`. Do not use `127.0.0.1` in
-   the ESP32 sketch.
+4. Verify `http://127.0.0.1:8000/docs` on the laptop. The previously supplied
+   Wi-Fi IPv4 `192.168.13.207` was not assigned during the latest workspace
+   check; the observed Wi-Fi address was `10.94.116.150`. Always confirm the
+   current laptop Wi-Fi IPv4:
+
+   ```powershell
+   Get-NetIPAddress -AddressFamily IPv4 |
+     Where-Object { $_.InterfaceAlias -eq "Wi-Fi" -and $_.AddressState -eq "Preferred" }
+   ```
+
+   From a phone/second device on the same Wi-Fi, open
+   `http://<CURRENT_LAPTOP_WIFI_IPV4>:8000/docs`. Uvicorn must bind to
+   `0.0.0.0`. If unreachable, check same-Wi-Fi/client isolation and allow
+   Python/Uvicorn through Windows Firewall on the Private profile only; never
+   disable the firewall globally.
+5. Set `SERVER_URL` in local `secrets.h` to
+   `http://<CURRENT_LAPTOP_WIFI_IPV4>:8000/api/sensors/readings`. Never use
+   `127.0.0.1` from the ESP32.
 6. If Windows Firewall prompts, allow Python inbound TCP port 8000 only on a
    trusted **Private** network. If a rule is needed, create it only for the
    private profile, for example from an elevated PowerShell:
@@ -194,20 +231,56 @@ Do not expose this prototype server or its API key to the public internet.
 
 Sketch: [hardware/esp32_soil_moisture/esp32_soil_moisture.ino](../hardware/esp32_soil_moisture/esp32_soil_moisture.ino).
 
-1. Open it in Arduino IDE and select/install the ESP32 board support for the
-   actual board. `WiFi`, `HTTPClient`, and `WiFiClient` are provided by the
-   ESP32 Arduino core; no additional JSON library is required.
-2. Replace `WIFI_SSID`, `WIFI_PASSWORD`, `SERVER_URL`, `SENSOR_API_KEY`,
-   `SENSOR_ID`, `VILLAGE_LGD_CODE`, and the board-appropriate ADC pin.
-3. Register the sensor through `POST /api/sensors` before uploading. Use the
-   same exact ID and village LGD code in the sketch.
-4. Set `DRY_ADC_VALUE` and `WET_ADC_VALUE` from physical calibration.
-5. Compile/upload, open Serial Monitor at 115200 baud, and check Wi-Fi
-   connection, raw ADC output, calibrated percentage, HTTP 202, and the JSON
-   acknowledgement. A calibration placeholder prevents sending readings.
-6. Check `GET /api/sensors/{sensor_id}`, the village soil-moisture endpoint, and
-   the selected-village drawer. A marker appears only if both coordinates were
-   registered.
+1. Copy `hardware/esp32_soil_moisture/secrets.h.example` to the ignored local
+   `secrets.h`; fill Wi-Fi credentials, API key, sensor ID, and the canonical
+   village LGD code for the sensor's actual installation. Never commit
+   `secrets.h`. A bench test in Chennai must not be registered against an
+   unrelated Nilgiris village; wait for a valid deployment-village mapping
+   before enabling sensor POSTs.
+2. Coordinates are optional. Leave them null unless the actual installation
+   location is known; village context works without a map marker.
+3. Soil ADC is GPIO 34. Confirm board ADC capability, sensor voltage limits,
+   and physical wiring. Rain ADC remains disabled (`-1`) until the connected
+   pin is confirmed.
+4. Set `DRY_ADC_VALUE` and `WET_ADC_VALUE` from physical calibration. Firmware
+   prints raw ADC but will not POST until both are non-negative and distinct.
+   Do not treat generic values as calibrated.
+5. Optionally set the rain ADC pin after confirming wiring. `rain_raw` is only
+   local context. To send `rain_detected`, determine the module-specific
+   threshold and direction experimentally; otherwise keep its threshold at
+   `-1`. It is not a calibrated rain gauge and must not be represented in mm
+   or used by warnings/risk calculations.
+6. Register the real sensor once before upload. Replace the village placeholder
+   only with the supported LGD code for the real installation; omit coordinates
+   unless known:
+
+   ```powershell
+   $headers = @{ "X-Sensor-Key" = $env:SENSOR_API_KEY }
+   $sensor = @{
+     sensor_id = "FG-NIL-001"
+     sensor_name = "ESP32 soil-moisture sensor"
+     village_lgd_code = "ACTUAL_SUPPORTED_VILLAGE_LGD_CODE"
+     sensor_type = "soil_moisture"
+     is_test = $false
+   }
+   Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/sensors" `
+     -Headers $headers -ContentType "application/json" -Body ($sensor | ConvertTo-Json)
+   ```
+
+   HTTP 409 means the ID already exists. Do not create another registration to
+   bypass it; inspect `GET /api/sensors/{sensor_id}` and confirm the existing
+   village and type. The API does not update registration metadata.
+7. Open the sketch in Arduino IDE and select the exact ESP32 board.
+   `WiFi`, `HTTPClient`, and `WiFiClient` come from its Arduino core. Upload,
+   open Serial Monitor at 115200 baud, and check Wi-Fi status/IP, URL, raw
+   values, calibrated percentage, HTTP code, and backend response. The key is
+   never printed. Hardware test interval is 10 seconds; use a configurable
+   30–60 seconds for production/demo operation.
+8. On HTTP 202, verify `GET /api/sensors`,
+   `GET /api/villages/{village_code}/soil-moisture`, and
+   `GET /api/villages/{village_code}/context`; confirm matching sensor/village,
+   `is_test: false`, freshness, and rain fields/nulls. The dashboard displays
+   backend data. A map marker requires registered coordinates.
 
 ## Software-only test data
 
@@ -249,6 +322,9 @@ provide a public delete API.
   not require coordinates.
 - **No readings / no-data:** verify calibration, Wi-Fi reachability, private
   firewall access, URL, and the Serial Monitor HTTP status.
+- **422:** inspect JSON field names and ranges; soil percentage must be finite
+  and between 0 and 100.
+- **500:** inspect the Uvicorn terminal instead of hiding the error.
 - **Stale/offline:** status uses server receipt time, not device clock or the
   supplied measurement time.
 - **Data persistence:** local SQLite survives service restarts on this host;
@@ -257,3 +333,5 @@ provide a public delete API.
   configured on this local HTTP setup. Use a trusted private LAN only.
 - Sensor readings are contextual evidence only. They do not affect the
   baseline model, warnings, risk tiers, or rainfall scenarios.
+- Rain-sensor raw/state fields are local observations only; they are kept
+  separate from historical/current official rainfall and rainfall scenarios.

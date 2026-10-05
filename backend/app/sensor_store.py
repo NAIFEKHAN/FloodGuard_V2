@@ -79,7 +79,7 @@ def _connection() -> Iterator[sqlite3.Connection]:
             CREATE TABLE IF NOT EXISTS sensors (
                 sensor_id TEXT PRIMARY KEY,
                 sensor_name TEXT NOT NULL,
-                village_lgd_code TEXT NOT NULL,
+                village_lgd_code TEXT,
                 latitude REAL,
                 longitude REAL,
                 sensor_type TEXT NOT NULL CHECK (sensor_type = 'soil_moisture'),
@@ -90,10 +90,12 @@ def _connection() -> Iterator[sqlite3.Connection]:
             CREATE TABLE IF NOT EXISTS sensor_readings (
                 reading_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sensor_id TEXT NOT NULL REFERENCES sensors(sensor_id) ON DELETE CASCADE,
-                village_lgd_code TEXT NOT NULL,
+                village_lgd_code TEXT,
                 soil_moisture_percent REAL NOT NULL
                     CHECK (soil_moisture_percent >= 0 AND soil_moisture_percent <= 100),
                 raw_value INTEGER,
+                rain_raw INTEGER,
+                rain_detected INTEGER CHECK (rain_detected IS NULL OR rain_detected IN (0, 1)),
                 recorded_at TEXT NOT NULL,
                 received_at TEXT NOT NULL,
                 is_test INTEGER NOT NULL DEFAULT 0 CHECK (is_test IN (0, 1))
@@ -124,6 +126,110 @@ def _connection() -> Iterator[sqlite3.Connection]:
                 ON warning_history(village_lgd_code, generated_at DESC, warning_id DESC);
             """
         )
+        reading_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(sensor_readings)")
+        }
+        if "rain_raw" not in reading_columns:
+            connection.execute("ALTER TABLE sensor_readings ADD COLUMN rain_raw INTEGER")
+        if "rain_detected" not in reading_columns:
+            connection.execute(
+                "ALTER TABLE sensor_readings ADD COLUMN rain_detected INTEGER"
+            )
+        sensor_columns = {
+            row["name"]: row
+            for row in connection.execute("PRAGMA table_info(sensors)")
+        }
+        reading_columns = {
+            row["name"]: row
+            for row in connection.execute("PRAGMA table_info(sensor_readings)")
+        }
+        if sensor_columns["village_lgd_code"]["notnull"] or reading_columns[
+            "village_lgd_code"
+        ]["notnull"]:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    """
+                    CREATE TABLE sensors_v2 (
+                        sensor_id TEXT PRIMARY KEY,
+                        sensor_name TEXT NOT NULL,
+                        village_lgd_code TEXT,
+                        latitude REAL,
+                        longitude REAL,
+                        sensor_type TEXT NOT NULL CHECK (sensor_type = 'soil_moisture'),
+                        installed_at TEXT,
+                        registered_at TEXT NOT NULL,
+                        is_test INTEGER NOT NULL DEFAULT 0 CHECK (is_test IN (0, 1))
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE sensor_readings_v2 (
+                        reading_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        sensor_id TEXT NOT NULL REFERENCES sensors_v2(sensor_id) ON DELETE CASCADE,
+                        village_lgd_code TEXT,
+                        soil_moisture_percent REAL NOT NULL
+                            CHECK (soil_moisture_percent >= 0 AND soil_moisture_percent <= 100),
+                        raw_value INTEGER,
+                        rain_raw INTEGER,
+                        rain_detected INTEGER CHECK (rain_detected IS NULL OR rain_detected IN (0, 1)),
+                        recorded_at TEXT NOT NULL,
+                        received_at TEXT NOT NULL,
+                        is_test INTEGER NOT NULL DEFAULT 0 CHECK (is_test IN (0, 1))
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO sensors_v2 (
+                        sensor_id, sensor_name, village_lgd_code, latitude,
+                        longitude, sensor_type, installed_at, registered_at, is_test
+                    )
+                    SELECT sensor_id, sensor_name, village_lgd_code, latitude,
+                           longitude, sensor_type, installed_at, registered_at, is_test
+                    FROM sensors
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO sensor_readings_v2 (
+                        reading_id, sensor_id, village_lgd_code,
+                        soil_moisture_percent, raw_value, rain_raw, rain_detected,
+                        recorded_at, received_at, is_test
+                    )
+                    SELECT reading_id, sensor_id, village_lgd_code,
+                           soil_moisture_percent, raw_value, rain_raw, rain_detected,
+                           recorded_at, received_at, is_test
+                    FROM sensor_readings
+                    """
+                )
+                connection.execute("DROP TABLE sensor_readings")
+                connection.execute("DROP TABLE sensors")
+                connection.execute("ALTER TABLE sensors_v2 RENAME TO sensors")
+                connection.execute(
+                    "ALTER TABLE sensor_readings_v2 RENAME TO sensor_readings"
+                )
+                connection.execute(
+                    """
+                    CREATE INDEX sensor_readings_latest
+                    ON sensor_readings(sensor_id, received_at DESC, reading_id DESC)
+                    """
+                )
+                connection.execute(
+                    """
+                    CREATE INDEX sensor_readings_village_latest
+                    ON sensor_readings(village_lgd_code, received_at DESC, reading_id DESC)
+                    """
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+            finally:
+                connection.execute("PRAGMA foreign_keys = ON")
         yield connection
     finally:
         connection.close()
@@ -138,6 +244,10 @@ def _reading_dict(row: sqlite3.Row | None) -> dict[str, object] | None:
         "village_lgd_code": row["village_lgd_code"],
         "soil_moisture_percent": row["soil_moisture_percent"],
         "raw_value": row["raw_value"],
+        "rain_raw": row["rain_raw"],
+        "rain_detected": (
+            bool(row["rain_detected"]) if row["rain_detected"] is not None else None
+        ),
         "recorded_at": row["recorded_at"],
         "received_at": row["received_at"],
         "is_test": bool(row["is_test"]),
@@ -183,13 +293,15 @@ def register_sensor(
     *,
     sensor_id: str,
     sensor_name: str,
-    village_lgd_code: str,
+    village_lgd_code: str | None,
     latitude: float | None,
     longitude: float | None,
     sensor_type: str,
     installed_at: str | None,
     is_test: bool,
 ) -> dict[str, object]:
+    if village_lgd_code is None and not is_test:
+        raise ValueError("A village LGD code is required for non-test sensors.")
     try:
         with _connection() as connection:
             with connection:
@@ -242,12 +354,14 @@ def list_sensors() -> list[dict[str, object]]:
 def insert_reading(
     *,
     sensor_id: str,
-    village_lgd_code: str,
+    village_lgd_code: str | None,
     soil_moisture_percent: float,
     raw_value: int | None,
+    rain_raw: int | None = None,
+    rain_detected: bool | None = None,
     recorded_at: str,
     received_at: str,
-    is_test: bool,
+    is_test: bool | None,
 ) -> dict[str, object]:
     with _connection() as connection:
         with connection:
@@ -256,25 +370,28 @@ def insert_reading(
             ).fetchone()
             if sensor is None:
                 raise SensorNotFoundError(sensor_id)
+            registered_is_test = bool(sensor["is_test"])
+            if is_test is not None and registered_is_test != is_test:
+                raise TestReadingNotAllowed(sensor_id)
             if sensor["village_lgd_code"] != village_lgd_code:
                 raise VillageMismatchError(sensor_id)
-            if bool(sensor["is_test"]) != is_test:
-                raise TestReadingNotAllowed(sensor_id)
             connection.execute(
                 """
                 INSERT INTO sensor_readings (
                     sensor_id, village_lgd_code, soil_moisture_percent, raw_value,
-                    recorded_at, received_at, is_test
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    rain_raw, rain_detected, recorded_at, received_at, is_test
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     sensor_id,
                     village_lgd_code,
                     soil_moisture_percent,
                     raw_value,
+                    rain_raw,
+                    int(rain_detected) if rain_detected is not None else None,
                     recorded_at,
                     received_at,
-                    int(is_test),
+                    int(registered_is_test),
                 ),
             )
     updated_sensor = get_sensor(sensor_id)
