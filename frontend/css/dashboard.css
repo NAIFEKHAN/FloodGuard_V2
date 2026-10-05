@@ -1549,7 +1549,7 @@ html, body {
 
 .route-metrics-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 6px;
   background: #ffffff;
   border: 1px solid var(--shelter-border);
@@ -1708,6 +1708,17 @@ html, body {
   margin: 0;
   border-left: 2px solid #f59e0b;
   padding-left: 6px;
+}
+
+.route-risk-summary {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-md);
+  background: #f8fafc;
+  color: var(--text-main);
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 /* Village Detail Drawer Evacuation CTA */
@@ -4125,7 +4136,7 @@ html, body {
 
 .em-shelter-estimates {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   gap: 6px;
   background: #f8fafc;
   border: 1px solid var(--border-subtle);

@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.sensor_api import MAX_SENSOR_REQUEST_BYTES, router as sensor_router
+from backend.app.shelter_api import router as shelter_router
 from backend.app.warning_api import router as warning_router
 from backend.app.data_catalog import (
     MODEL_METADATA,
@@ -34,6 +35,7 @@ app.mount("/assets", StaticFiles(directory=FRONTEND), name="assets")
 app.mount("/data", StaticFiles(directory=DATA), name="data")
 app.include_router(sensor_router)
 app.include_router(warning_router)
+app.include_router(shelter_router)
 
 
 @app.middleware("http")

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FloodGuard | Nilgiris Geospatial Disaster Intelligence</title>
-  <meta name="description" content="Village-level spatial flood and landslide susceptibility intelligence and nearest designated shelter evacuation routing for Nilgiris District, Tamil Nadu.">
+  <meta name="description" content="Village-level spatial flood and landslide susceptibility intelligence with source-verified shelter inventory and road-routing support for Nilgiris District, Tamil Nadu.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -242,7 +242,7 @@
         <div class="shelter-header-left">
           <span class="shelter-panel-badge">EVACUATION INTELLIGENCE</span>
           <h3 class="shelter-panel-title">Evacuation Intelligence</h3>
-          <p class="shelter-panel-sub">Route planning based on selected/current location and designated shelter locations.</p>
+          <p class="shelter-panel-sub">Choose a source-verified facility and request a backend road route from a selected village or explicit location.</p>
         </div>
         <button id="btn-close-shelter-panel" class="shelter-close-btn" aria-label="Close evacuation intelligence panel" type="button">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -314,34 +314,29 @@
         </div>
       </div>
 
-      <!-- Nearest Shelter Hero Card -->
+      <!-- Source-verified shelter recommendation; unavailable until sourced records exist -->
       <div class="nearest-shelter-hero" id="nearest-shelter-hero">
         <div class="hero-shelter-top">
-          <span class="badge-tag tag-green">NEAREST DESIGNATED SHELTER</span>
-          <span class="shelter-distance-chip" id="hero-shelter-distance">1.8 km</span>
+          <span class="badge-tag tag-green">VERIFIED FACILITY</span>
+          <span class="shelter-distance-chip" id="hero-shelter-distance">Unavailable</span>
         </div>
-        <h4 class="hero-shelter-name" id="hero-shelter-name">Government Arts College Relief Center (DEMO)</h4>
+        <h4 class="hero-shelter-name" id="hero-shelter-name">No verified shelter records</h4>
         <div class="hero-shelter-meta">
-          <span id="hero-shelter-taluk">Taluk: Udhagamandalam</span> · <span id="hero-shelter-cap">Cap: 250 persons</span>
+          <span id="hero-shelter-taluk">Facility status unavailable</span> · <span id="hero-shelter-cap"></span>
         </div>
-        <p class="hero-shelter-addr" id="hero-shelter-addr">Stone House Hill, Udhagamandalam, Nilgiris 643002</p>
+        <p class="hero-shelter-addr" id="hero-shelter-addr">No authoritative facility source is currently configured.</p>
 
         <!-- Route Estimates -->
         <div class="route-metrics-row">
           <div class="route-metric">
             <span class="metric-label">Distance</span>
-            <strong class="metric-val" id="route-dist-val">1.8 km</strong>
-            <span class="metric-sub" id="route-dist-type">Direct Haversine</span>
+            <strong class="metric-val" id="route-dist-val">—</strong>
+            <span class="metric-sub" id="route-dist-type">Road route unavailable</span>
           </div>
           <div class="route-metric">
             <span class="metric-label">Est. Driving</span>
-            <strong class="metric-val" id="route-drive-time">~6 mins</strong>
-            <span class="metric-sub">Mountain Terrain @ 25km/h</span>
-          </div>
-          <div class="route-metric">
-            <span class="metric-label">Est. Walking</span>
-            <strong class="metric-val" id="route-walk-time">~31 mins</strong>
-            <span class="metric-sub">Hilly Pace @ 3.5km/h</span>
+            <strong class="metric-val" id="route-drive-time">—</strong>
+            <span class="metric-sub">Provider estimate unavailable</span>
           </div>
         </div>
 
@@ -356,8 +351,8 @@
         </div>
 
         <div class="shelter-contact-row">
-          <span class="contact-label">Emergency Authority:</span>
-          <span class="contact-value">Nilgiris DDMA Relief (1077) · Demo representation</span>
+            <span class="contact-label">Facility provenance:</span>
+            <span class="contact-value">No verified facility record available.</span>
         </div>
       </div>
 
@@ -365,7 +360,7 @@
       <div class="evac-route-context-box" id="evac-route-context-box">
         <div class="context-box-header">
           <span class="context-box-title">SMART ROUTE CONTEXT</span>
-          <span class="context-status-pill" id="route-network-status">OSRM Ready</span>
+          <span class="context-status-pill" id="route-network-status">No verified route endpoints</span>
         </div>
         <div class="context-grid">
           <div class="context-grid-item">
@@ -378,7 +373,7 @@
           </div>
           <div class="context-grid-item">
             <span class="c-label">Shelter Proximity</span>
-            <strong class="c-val" id="ctx-shelter-dist">1.8 km Direct</strong>
+            <strong class="c-val" id="ctx-shelter-dist">Unavailable</strong>
           </div>
           <div class="context-grid-item">
             <span class="c-label">Road Routing</span>
@@ -388,20 +383,21 @@
         <p class="context-disclaimer">
           Route planning uses available mapped road-network data. Real-time landslide, flooding, traffic, bridge, or road-closure conditions are not currently available. Verify current road and shelter status with local authorities before evacuation.
         </p>
+        <p class="route-risk-summary" id="route-risk-summary" aria-live="polite">Route not calculated.</p>
       </div>
 
       <!-- Other Nearby Shelters List -->
       <div class="nearby-shelters-section">
-        <span class="nearby-title">All Designated Shelters (Sorted by Proximity)</span>
+        <span class="nearby-title">Verified facilities (select one to request a road route)</span>
         <div class="nearby-shelters-list" id="nearby-shelters-list" role="listbox">
           <!-- Populated dynamically by JavaScript -->
         </div>
       </div>
 
-      <!-- Scientific & Operational Shelter Disclaimer -->
+      <!-- Shelter data status -->
       <div class="shelter-disclaimer-box">
-        <strong>DEMONSTRATION SHELTER DATASET:</strong>
-        <p>Shelter locations are designated demo representations for disaster decision-support and route planning. Real-world operational opening status, accessibility, and current safety must be verified with the Nilgiris District Disaster Management Authority (DDMA / Revenue Dept). Do not assume any shelter is guaranteed safe without official authority clearance.</p>
+        <strong>SHELTER DATA STATUS:</strong>
+        <p>Only source-cited, verified facility records are eligible for routing. No shelter locations are currently available in the configured inventory. A returned road route would not establish that a facility or road is open or safe; follow local-authority instructions.</p>
       </div>
     </section>
 
@@ -419,7 +415,7 @@
             <span class="emergency-status-label" id="em-status-label">ACTIVE CONTEXT</span>
           </div>
           <h3 class="emergency-panel-title" id="em-location-title">Nilgiris Emergency Center</h3>
-          <p class="emergency-panel-sub" id="em-location-sub">Village-level risk context, real-time weather observations, and nearest shelter navigation.</p>
+          <p class="emergency-panel-sub" id="em-location-sub">Village-level risk context, weather observations, and source-verified shelter availability.</p>
         </div>
         <button id="btn-close-emergency" class="emergency-close-btn" aria-label="Close emergency alert center" type="button">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -436,9 +432,9 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
           <span>Select on Map</span>
         </button>
-        <button id="em-btn-nearest-shelter" class="em-action-btn" type="button" aria-label="View nearest designated shelter">
+        <button id="em-btn-nearest-shelter" class="em-action-btn" type="button" aria-label="View selected verified shelter">
           <span class="em-btn-emoji">🏛️</span>
-          <span>Nearest Shelter</span>
+          <span>Selected Shelter</span>
         </button>
         <button id="em-btn-share" class="em-action-btn em-action-share" type="button" aria-label="Share emergency context">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
@@ -552,24 +548,20 @@
           <p class="em-scenario-note">Scenario simulation — not a live warning.</p>
         </div>
 
-        <!-- Nearest Designated Shelter -->
+        <!-- Source-verified shelter availability -->
         <div class="em-section-card em-shelter-card">
-          <div class="em-card-sublabel">NEAREST DESIGNATED SHELTER</div>
+          <div class="em-card-sublabel">VERIFIED SHELTER AVAILABILITY</div>
           <div class="em-shelter-top-row">
-            <h4 class="em-shelter-name" id="em-shelter-name">Government Arts College Relief Center (DEMO)</h4>
-            <span class="em-shelter-dist-pill" id="em-shelter-dist">1.8 km</span>
+            <h4 class="em-shelter-name" id="em-shelter-name">No verified shelter records</h4>
+            <span class="em-shelter-dist-pill" id="em-shelter-dist">Unavailable</span>
           </div>
-          <div class="em-shelter-meta" id="em-shelter-meta">Taluk: Udhagamandalam · Capacity: 250 persons</div>
-          <div class="em-shelter-addr" id="em-shelter-addr">Stone House Hill, Udhagamandalam, Nilgiris 643002</div>
+          <div class="em-shelter-meta" id="em-shelter-meta">No authoritative facility source is configured.</div>
+          <div class="em-shelter-addr" id="em-shelter-addr">Follow information from local authorities.</div>
 
           <div class="em-shelter-estimates">
             <div class="em-est-item">
               <span class="em-est-label">Est. Driving</span>
-              <strong class="em-est-val" id="em-drive-time">~6 mins</strong>
-            </div>
-            <div class="em-est-item">
-              <span class="em-est-label">Est. Walking</span>
-              <strong class="em-est-val" id="em-walk-time">~31 mins</strong>
+              <strong class="em-est-val" id="em-drive-time">Unavailable</strong>
             </div>
           </div>
 
@@ -713,7 +705,7 @@
         </div>
         <div class="legend-item">
           <span class="legend-dot dot-shelter"></span>
-          <span class="legend-label">Shelter Locations — 10 DEMO</span>
+          <span class="legend-label" id="legend-shelter-count">Verified shelter locations (0)</span>
         </div>
       </div>
 
@@ -760,7 +752,23 @@
 
       <!-- Layers Popup Panel -->
       <div id="layers-popup" class="gmap-layers-popup" style="display: none;" role="menu" aria-label="Map Layer Selection">
-        <div class="layers-popup-title">Map Layers</div>
+        <div class="layers-popup-title">Base map</div>
+        <label class="custom-toggle base-map-toggle">
+          <input type="radio" name="base-map" value="satellite" checked>
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Satellite imagery</span>
+        </label>
+        <label class="custom-toggle base-map-toggle">
+          <input type="radio" name="base-map" value="street">
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Street map</span>
+        </label>
+        <label class="custom-toggle">
+          <input type="checkbox" id="toggle-satellite-labels" checked>
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Place labels over imagery</span>
+        </label>
+        <div class="layers-popup-title">FloodGuard overlays</div>
         <label class="custom-toggle">
           <input type="checkbox" id="toggle-susceptibility" checked>
           <span class="toggle-indicator"></span>
@@ -774,7 +782,7 @@
         <label class="custom-toggle">
           <input type="checkbox" id="toggle-shelters" checked>
           <span class="toggle-indicator"></span>
-          <span class="toggle-text">Designated Shelters (10 DEMO)</span>
+          <span class="toggle-text">Verified shelter locations</span>
         </label>
         <label class="custom-toggle">
           <input type="checkbox" id="toggle-weather" checked>
