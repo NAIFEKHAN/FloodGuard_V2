@@ -847,21 +847,29 @@
   /**
    * Initialize Leaflet Situation Map
    */
-  function setBaseMap(name) {
+  function setBaseMap(name, { persist = true } = {}) {
     if (!map || !satelliteBaseLayer || !streetBaseLayer) return;
     if (map.hasLayer(satelliteBaseLayer)) map.removeLayer(satelliteBaseLayer);
     if (map.hasLayer(streetBaseLayer)) map.removeLayer(streetBaseLayer);
-    const layer = name === "street" ? streetBaseLayer : satelliteBaseLayer;
+    const selectedName = name === "street" || name === "satellite" ? name : "satellite";
+    const layer = selectedName === "street" ? streetBaseLayer : satelliteBaseLayer;
     layer.addTo(map);
     document.querySelectorAll('input[name="base-map"]').forEach(input => {
-      input.checked = input.value === (name === "street" ? "street" : "satellite");
+      input.checked = input.value === selectedName;
     });
     const labels = $("toggle-satellite-labels");
     if (labels) {
-      if (name === "street") {
+      if (selectedName === "street") {
         if (map.hasLayer(satelliteLabelLayer)) map.removeLayer(satelliteLabelLayer);
       } else if (labels.checked && !map.hasLayer(satelliteLabelLayer)) {
         satelliteLabelLayer.addTo(map);
+      }
+    }
+    if (persist) {
+      try {
+        window.localStorage.setItem("floodguard_basemap", selectedName);
+      } catch (error) {
+        console.warn("Could not save the FloodGuard basemap preference:", error);
       }
     }
   }
@@ -893,7 +901,41 @@
         pane: "overlayPane"
       }
     );
-    setBaseMap("satellite");
+    let satelliteTileErrors = 0;
+    let satelliteFallbackApplied = false;
+    satelliteBaseLayer.on("tileload", () => {
+      satelliteTileErrors = 0;
+    });
+    satelliteBaseLayer.on("tileerror", () => {
+      satelliteTileErrors += 1;
+      if (
+        map.hasLayer(satelliteBaseLayer) &&
+        satelliteTileErrors >= 4 &&
+        !satelliteFallbackApplied
+      ) {
+        satelliteFallbackApplied = true;
+        console.warn(
+          "Esri World Imagery tiles are repeatedly failing; switched to the OpenStreetMap street basemap."
+        );
+        setBaseMap("street");
+        showToast(
+          "Satellite imagery is unavailable. Showing the Street Map instead.",
+          true,
+          null,
+          5000
+        );
+      }
+    });
+    let initialBasemap = "satellite";
+    try {
+      const savedBasemap = window.localStorage.getItem("floodguard_basemap");
+      if (savedBasemap === "satellite" || savedBasemap === "street") {
+        initialBasemap = savedBasemap;
+      }
+    } catch (error) {
+      console.warn("Could not read the saved FloodGuard basemap preference:", error);
+    }
+    setBaseMap(initialBasemap, { persist: false });
 
     susceptibilityLayer = L.layerGroup().addTo(map);
     boundaryLayer = L.layerGroup().addTo(map);
@@ -910,7 +952,13 @@
 
     document.querySelectorAll('input[name="base-map"]').forEach(input => {
       input.onchange = () => {
-        if (input.checked) setBaseMap(input.value);
+        if (input.checked) {
+          if (input.value === "satellite") {
+            satelliteTileErrors = 0;
+            satelliteFallbackApplied = false;
+          }
+          setBaseMap(input.value);
+        }
       };
     });
     const labelToggle = $("toggle-satellite-labels");

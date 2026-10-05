@@ -51,6 +51,8 @@ No external datasets are downloaded or included in this foundation task. Each re
 
 The FastAPI service serves the Leaflet dashboard at `/` and static assets under `/assets`. Existing API endpoints provide the validated village, terrain, rainfall, historical-event, model-status, susceptibility, and rainfall-scenario data used by the interface. The `/api/data-sources` registry and `/api/villages/{village_code}/context` endpoint add source metadata and per-village data aggregation without replacing existing routes. DEM-derived hydrology endpoints and optional Leaflet overlays are described in [docs/hydrology.md](./docs/hydrology.md); regenerate their offline products with `python -m pipeline.build_hydrology_features`. See [docs/data-architecture.md](./docs/data-architecture.md) for identifier, coverage, provenance, and availability details. The health endpoint remains available:
 
+The map defaults to Esri World Imagery satellite tiles and offers OpenStreetMap as the alternate street basemap through the Layers panel. Provider attribution remains visible. The selected basemap is saved in browser local storage (`floodguard_basemap`); repeated satellite tile failures switch the map to Street Map.
+
 ```text
 GET /health -> {"status": "ok", "service": "FloodGuard API"}
 ```

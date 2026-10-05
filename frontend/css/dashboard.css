@@ -4769,6 +4769,68 @@ html, body {
   color: var(--text-main);
 }
 
+.basemap-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.basemap-selector legend,
+.layers-section-label {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin-bottom: 2px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.basemap-choice {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.basemap-choice input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--brand-primary);
+}
+
+.basemap-choice input:checked + span {
+  color: #075985;
+  font-weight: 800;
+}
+
+.basemap-choice input:checked + span::after {
+  content: " ✓";
+}
+
+.basemap-choice:focus-within {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.layers-section-label {
+  padding-top: 5px;
+  border-top: 1px solid var(--border-subtle);
+}
+
 .custom-toggle {
   min-height: 30px;
   font-size: 11px;

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="/assets/css/dashboard.css">
+  <link rel="stylesheet" href="/assets/css/dashboard.css?v=basemap-20261005">
 </head>
 <body class="gmap-theme">
   <!-- Fullscreen Map Application Workspace -->
@@ -752,23 +752,24 @@
 
       <!-- Layers Popup Panel -->
       <div id="layers-popup" class="gmap-layers-popup" style="display: none;" role="menu" aria-label="Map Layer Selection">
-        <div class="layers-popup-title">Base map</div>
-        <label class="custom-toggle base-map-toggle">
-          <input type="radio" name="base-map" value="satellite" checked>
-          <span class="toggle-indicator"></span>
-          <span class="toggle-text">Satellite imagery</span>
-        </label>
-        <label class="custom-toggle base-map-toggle">
-          <input type="radio" name="base-map" value="street">
-          <span class="toggle-indicator"></span>
-          <span class="toggle-text">Street map</span>
-        </label>
+        <div class="layers-popup-title">Map Layers</div>
+        <fieldset class="basemap-selector" aria-label="Base map">
+          <legend>Base map</legend>
+          <label class="basemap-choice">
+            <input type="radio" name="base-map" value="satellite" checked>
+            <span>Satellite</span>
+          </label>
+          <label class="basemap-choice">
+            <input type="radio" name="base-map" value="street">
+            <span>Street Map</span>
+          </label>
+        </fieldset>
+        <div class="layers-section-label">Overlays</div>
         <label class="custom-toggle">
           <input type="checkbox" id="toggle-satellite-labels" checked>
           <span class="toggle-indicator"></span>
           <span class="toggle-text">Place labels over imagery</span>
         </label>
-        <div class="layers-popup-title">FloodGuard overlays</div>
         <label class="custom-toggle">
           <input type="checkbox" id="toggle-susceptibility" checked>
           <span class="toggle-indicator"></span>
@@ -1529,6 +1530,6 @@
   <!-- External Libraries -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script src="/assets/js/dashboard.js"></script>
+  <script src="/assets/js/dashboard.js?v=basemap-20261005"></script>
 </body>
 </html>
