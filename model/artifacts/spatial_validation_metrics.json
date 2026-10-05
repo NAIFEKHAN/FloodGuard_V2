@@ -1,0 +1,204 @@
+{
+  "gate_status": "CONDITIONAL_ML",
+  "model_type": "Positive-Unlabeled (PU)-weighted XGBoost; positive-versus-unlabeled proxy",
+  "estimator_parameters": {
+    "n_estimators": 35,
+    "max_depth": 3,
+    "learning_rate": 0.08,
+    "random_state": 42,
+    "eval_metric": "logloss",
+    "n_jobs": 1
+  },
+  "baseline_output": "BASELINE MODELED SUSCEPTIBILITY",
+  "baseline_definition": "Relative modeled susceptibility from terrain, DEM-derived hydrology, and historical rainfall features; not a real-time prediction.",
+  "current_conditions": {
+    "status": "not_in_model",
+    "reason": "The backend does not ingest validated current rainfall; browser-fetched weather is contextual only."
+  },
+  "scenario_output": "SCENARIO-ADJUSTED MODELED RISK",
+  "formulation": "Weighted binary XGBoost proxy: linked-event villages are positive; villages without linked inventory evidence remain unlabeled but are encoded as class 0 for estimator fitting and proxy metrics.",
+  "sample_size": 40,
+  "labeled_positive_count": 25,
+  "unlabeled_count": 15,
+  "verified_negative_count": 0,
+  "negative_labels_created": 0,
+  "unlabeled_records_encoded_as_class_0": true,
+  "metric_interpretation": "ROC-AUC, PR-AUC, and Brier score compare linked positives with unlabeled records as a proxy task; they are not verified-negative discrimination, calibrated probabilities, or operational-risk validation.",
+  "spatial_validation_method": "6-Fold Leave-One-Taluk-Out (LOTO; explicit taluk holdout loop)",
+  "taluk_groups": [
+    "Coonoor",
+    "Gudalur",
+    "Kotagiri",
+    "Kundah",
+    "Pandalur",
+    "Udhagai"
+  ],
+  "features": [
+    "elevation_mean_m",
+    "elevation_range_m",
+    "slope_mean_deg",
+    "slope_max_deg",
+    "mean_flow_accumulation_cells",
+    "max_flow_accumulation_cells",
+    "high_flow_area_fraction",
+    "drainage_density_km_per_km2",
+    "rainfall_7d_p95_mm",
+    "rainfall_3d_p95_mm",
+    "rainfall_1d_max_mm",
+    "rainfall_annual_mean_mm"
+  ],
+  "feature_groups": {
+    "terrain": [
+      "elevation_mean_m",
+      "elevation_range_m",
+      "slope_mean_deg",
+      "slope_max_deg"
+    ],
+    "hydrology": [
+      "mean_flow_accumulation_cells",
+      "max_flow_accumulation_cells",
+      "high_flow_area_fraction",
+      "drainage_density_km_per_km2"
+    ],
+    "rainfall": [
+      "rainfall_7d_p95_mm",
+      "rainfall_3d_p95_mm",
+      "rainfall_1d_max_mm",
+      "rainfall_annual_mean_mm"
+    ],
+    "historical_evidence_predictors": []
+  },
+  "target_source_column": "conditional_strict_linked_event_count",
+  "historical_evidence_predictor_features": [],
+  "excluded_training_columns": [
+    "conditional_strict_linked_event_count",
+    "experimental_hazard_index_0_100"
+  ],
+  "future_sensor_features": {
+    "soil_moisture": {
+      "status": "planned",
+      "included_in_training": false
+    }
+  },
+  "hydrology_join": {
+    "model_population_count": 40,
+    "matched_count": 40,
+    "unmatched_model_count": 0,
+    "unmatched_model_lgd_codes": [],
+    "hydrology_only_count": 0,
+    "hydrology_only_lgd_codes": [],
+    "join_key": "village_lgd_code",
+    "missing_data_strategy": "No imputation; all training-population villages require hydrology coverage."
+  },
+  "scenario_adjusted_rainfall_features": [
+    "rainfall_7d_p95_mm",
+    "rainfall_3d_p95_mm",
+    "rainfall_1d_max_mm"
+  ],
+  "unchanged_historical_rainfall_feature": "rainfall_annual_mean_mm",
+  "feature_importances": {
+    "elevation_mean_m": 0.5334,
+    "elevation_range_m": 0.0,
+    "slope_mean_deg": 0.0587,
+    "slope_max_deg": 0.064,
+    "mean_flow_accumulation_cells": 0.0263,
+    "max_flow_accumulation_cells": 0.0,
+    "high_flow_area_fraction": 0.0104,
+    "drainage_density_km_per_km2": 0.0,
+    "rainfall_7d_p95_mm": 0.2195,
+    "rainfall_3d_p95_mm": 0.0,
+    "rainfall_1d_max_mm": 0.0876,
+    "rainfall_annual_mean_mm": 0.0
+  },
+  "folds_using_hydrology": 5,
+  "model_comparison": {
+    "pu_logistic_regression": {
+      "model_name": "PU-Weighted Logistic Regression",
+      "loto_roc_auc": 0.7173,
+      "loto_pr_auc": 0.806,
+      "loto_brier_score": 0.1935
+    },
+    "pu_random_forest": {
+      "model_name": "PU-Weighted Random Forest",
+      "loto_roc_auc": 0.7627,
+      "loto_pr_auc": 0.8209,
+      "loto_brier_score": 0.1809
+    },
+    "pu_xgboost": {
+      "model_name": "PU-Weighted XGBoost Classifier",
+      "loto_roc_auc": 0.8573,
+      "loto_pr_auc": 0.9331,
+      "loto_brier_score": 0.178
+    }
+  },
+  "fold_details": [
+    {
+      "fold": 1,
+      "holdout_taluk": "Coonoor",
+      "train_samples": 36,
+      "test_samples": 4,
+      "test_positives": 4,
+      "test_unlabeled": 0,
+      "xgboost_hydrology_features_used": [
+        "mean_flow_accumulation_cells"
+      ]
+    },
+    {
+      "fold": 2,
+      "holdout_taluk": "Gudalur",
+      "train_samples": 37,
+      "test_samples": 3,
+      "test_positives": 0,
+      "test_unlabeled": 3,
+      "xgboost_hydrology_features_used": [
+        "mean_flow_accumulation_cells",
+        "high_flow_area_fraction",
+        "drainage_density_km_per_km2"
+      ]
+    },
+    {
+      "fold": 3,
+      "holdout_taluk": "Kotagiri",
+      "train_samples": 26,
+      "test_samples": 14,
+      "test_positives": 7,
+      "test_unlabeled": 7,
+      "xgboost_hydrology_features_used": [
+        "max_flow_accumulation_cells",
+        "drainage_density_km_per_km2"
+      ]
+    },
+    {
+      "fold": 4,
+      "holdout_taluk": "Kundah",
+      "train_samples": 35,
+      "test_samples": 5,
+      "test_positives": 5,
+      "test_unlabeled": 0,
+      "xgboost_hydrology_features_used": [
+        "mean_flow_accumulation_cells"
+      ]
+    },
+    {
+      "fold": 5,
+      "holdout_taluk": "Pandalur",
+      "train_samples": 36,
+      "test_samples": 4,
+      "test_positives": 2,
+      "test_unlabeled": 2,
+      "xgboost_hydrology_features_used": [
+        "high_flow_area_fraction"
+      ]
+    },
+    {
+      "fold": 6,
+      "holdout_taluk": "Udhagai",
+      "train_samples": 30,
+      "test_samples": 10,
+      "test_positives": 7,
+      "test_unlabeled": 3,
+      "xgboost_hydrology_features_used": []
+    }
+  ],
+  "governance_note": "Scores represent spatial demonstration susceptibility ranking, not live operational flood/landslide predictions or calibrated probabilities."
+}

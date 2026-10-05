@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FloodGuard | Nilgiris Geospatial Disaster Intelligence</title>
+  <meta name="description" content="Village-level spatial flood and landslide susceptibility intelligence and nearest designated shelter evacuation routing for Nilgiris District, Tamil Nadu.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/assets/css/dashboard.css">
+</head>
+<body class="gmap-theme">
+  <!-- Fullscreen Map Application Workspace -->
+  <div id="map-app-container" class="map-app-container">
+    <!-- Base Leaflet Map Canvas -->
+    <div id="map" class="map-canvas" aria-label="Nilgiris Geospatial Susceptibility Map" role="region"></div>
+    <div id="warning-map-badge" class="warning-map-badge" role="status" aria-live="polite" hidden>
+      WARNING VIEW · Decision support · <span id="warning-map-mode">SCENARIO</span>
+    </div>
+
+    <!-- Map Origin Selection Helper Banner (Active during 'Select on Map' mode) -->
+    <div id="map-picker-banner" class="map-picker-banner" style="display: none;" role="status">
+      <span class="picker-icon">📍</span>
+      <span class="picker-text">Click anywhere on the map to set your evacuation origin location</span>
+      <button id="btn-cancel-picker" class="btn-cancel-picker" type="button" aria-label="Cancel location selection">Cancel</button>
+    </div>
+
+    <!-- API / Network Loading & Toast Notification System -->
+    <div id="global-toast" class="gmap-toast" style="display: none;" role="status" aria-live="polite">
+      <span class="toast-spinner" id="toast-spinner"></span>
+      <span id="toast-message" class="toast-text">Loading geospatial intelligence…</span>
+      <button id="toast-retry-btn" class="toast-retry-btn" style="display: none;" aria-label="Retry network request" type="button">Retry</button>
+    </div>
+
+    <!-- Single Professional Floating Top Navbar -->
+    <header class="gmap-navbar" id="gmap-navbar" role="banner">
+      <!-- Left: Brand Group -->
+      <div class="navbar-brand-group">
+        <div class="status-brand">
+          <svg class="brand-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+          <span class="brand-title">FloodGuard</span>
+          <span class="brand-district">Nilgiris</span>
+        </div>
+      </div>
+
+      <!-- Center/Left: Integrated Search Bar -->
+      <div class="navbar-search-wrap">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="village-search" placeholder="Search village, taluk, or code…" autocomplete="off" spellcheck="false" aria-label="Search village, taluk, or code">
+        <button id="btn-clear-search" class="search-clear-btn" aria-label="Clear search input" style="display: none;" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Right: Navigation Actions & Model Status Indicator -->
+      <div class="navbar-actions-group" id="navbar-actions-group">
+        <button id="btn-model-info" class="status-system" title="Baseline modeled susceptibility: terrain, hydrology, and historical rainfall · six-fold Leave-One-Taluk-Out validation" aria-label="Model information: positive-unlabeled weighted XGBoost proxy, six-fold Leave-One-Taluk-Out validation" type="button">
+          <span class="status-dot"></span>
+          <span class="status-text" id="model-status">Model ✓</span>
+        </button>
+
+        <div id="nav-warning-pill" class="nav-warning-pill warning-none" title="Decision-support warning summary; not an official alert">
+          <span class="warn-pill-dot">✓</span>
+          <span class="warn-pill-text" id="nav-warning-text">WARNING STATUS LOADING</span>
+        </div>
+
+        <button id="btn-toggle-weather" class="nav-action-btn btn-weather-trigger" aria-label="Open Current Weather" type="button">
+          <span class="weather-btn-icon">🌦️</span>
+          <span>Current Weather</span>
+        </button>
+
+        <button id="btn-toggle-scenario" class="nav-action-btn btn-scenario-trigger" aria-label="Open Rainfall Scenario Experiment" type="button">
+          <span class="scenario-btn-icon" aria-hidden="true">🌧️</span>
+          <span>Scenario <strong id="header-scenario-badge">1.00×</strong></span>
+        </button>
+
+        <button id="btn-toggle-layers-top" class="nav-action-btn btn-layers-trigger" aria-label="Open map layer controls" aria-controls="layers-popup" aria-expanded="false" title="Map layers" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          <span>Layers</span>
+        </button>
+
+        <button id="btn-toggle-shelters" class="nav-action-btn btn-shelter-trigger" aria-label="Open Evacuation Intelligence and Shelter Routing" type="button">
+          <span class="shelter-btn-icon">🏛️</span>
+          <span>Shelters</span>
+        </button>
+
+        <button id="btn-toggle-emergency" class="nav-action-btn btn-emergency-trigger" aria-label="Open Emergency Alert Center" type="button">
+          <span class="emergency-btn-icon">🚨</span>
+          <span>Emergency</span>
+        </button>
+
+        <button id="btn-open-evidence" class="nav-action-btn btn-evidence-trigger" aria-label="Open evidence vault and audit data" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span>Evidence & Audits</span>
+        </button>
+      </div>
+
+      <!-- Mobile Navigation Actions Toggle -->
+      <button id="btn-mobile-nav-toggle" class="btn-mobile-nav-toggle" aria-label="Toggle navigation actions" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </header>
+
+    <!-- Left Village Risk Ranking Panel -->
+    <section class="gmap-village-panel is-collapsed" id="village-ranking-panel" aria-label="Village Risk Ranking Explorer">
+      <!-- Panel Header & Filter Card -->
+      <div class="village-panel-header-card">
+        <div class="ranking-panel-heading">
+          <div class="village-panel-title-wrap">
+            <h2 class="village-panel-title">Village Risk Ranking</h2>
+            <span class="village-panel-sub">Ranked by scenario-adjusted modeled risk</span>
+          </div>
+          <button id="btn-toggle-ranking" class="ranking-toggle" aria-controls="index-ranking" aria-expanded="false" aria-label="Expand village risk ranking" type="button">
+            <span class="ranking-toggle-count"><span id="ranking-count">40</span> villages</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+
+        <!-- Tier Filter Buttons with Synchronized Count Badges -->
+        <div class="tier-filter-pills" role="tablist" aria-label="Filter villages by susceptibility tier">
+          <button class="filter-pill active" data-tier="all" role="tab" aria-selected="true" type="button">All (<span id="kpi-villages">40</span>)</button>
+          <button class="filter-pill pill-high" data-tier="high" role="tab" aria-selected="false" type="button">High (<span id="kpi-high-tier">11</span>)</button>
+          <button class="filter-pill pill-med" data-tier="medium" role="tab" aria-selected="false" type="button">Medium (<span id="kpi-med-tier">20</span>)</button>
+          <button class="filter-pill pill-low" data-tier="low" role="tab" aria-selected="false" type="button">Low (<span id="kpi-low-tier">9</span>)</button>
+        </div>
+
+        <!-- Column Header Row -->
+        <div class="village-list-col-headers" aria-hidden="true">
+          <span class="col-hdr col-hdr-rank">RANK</span>
+          <span class="col-hdr col-hdr-village">VILLAGE</span>
+          <span class="col-hdr col-hdr-score">SCORE</span>
+          <span class="col-hdr col-hdr-change">CHANGE</span>
+          <span class="col-hdr col-hdr-status">STATUS</span>
+        </div>
+      </div>
+
+      <!-- Live Search Results & Village Ranking Dropdown List -->
+      <div id="index-ranking" class="gmap-search-results-dropdown" role="listbox" aria-label="Village susceptibility ranking">
+        <!-- Populated dynamically by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Floating Current Weather Card (Desktop Floating / Mobile Bottom Sheet) -->
+    <section class="gmap-weather-card" id="live-weather-card" aria-label="Current Weather" style="display: none;">
+      <!-- Mobile Drag Handle -->
+      <div class="mobile-sheet-handle" aria-hidden="true"></div>
+
+      <div class="weather-card-header">
+        <div class="weather-header-left">
+          <div class="weather-title-row">
+            <span class="weather-badge">CURRENT WEATHER</span>
+            <span class="weather-status-dot" id="weather-status-dot"></span>
+            <span class="weather-status-label" id="weather-status-label">🟢 LIVE</span>
+          </div>
+          <h3 class="weather-title" id="weather-location-label">Nilgiris District (Ooty)</h3>
+          <span class="weather-timestamp" id="weather-updated-time">Updated just now · Weather data: Open-Meteo</span>
+        </div>
+        <div class="weather-header-actions">
+          <button id="btn-refresh-weather" class="btn-weather-refresh" title="Refresh Live Weather" aria-label="Refresh Live Weather" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          </button>
+          <button id="btn-close-weather" class="weather-close-btn" aria-label="Close live weather card" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Weather Condition Metrics Grid -->
+      <div class="weather-metrics-grid">
+        <div class="weather-metric-item">
+          <span class="w-metric-icon">🌡️</span>
+          <div class="w-metric-content">
+            <span class="w-metric-label">Temperature</span>
+            <strong class="w-metric-val" id="w-temp">— °C</strong>
+            <span class="w-metric-sub" id="w-condition">Current Condition</span>
+          </div>
+        </div>
+        <div class="weather-metric-item">
+          <span class="w-metric-icon">💧</span>
+          <div class="w-metric-content">
+            <span class="w-metric-label">Relative Humidity</span>
+            <strong class="w-metric-val" id="w-humidity">— %</strong>
+            <span class="w-metric-sub">Atmospheric Moisture</span>
+          </div>
+        </div>
+        <div class="weather-metric-item">
+          <span class="w-metric-icon">🌧️</span>
+          <div class="w-metric-content">
+            <span class="w-metric-label">Precipitation</span>
+            <strong class="w-metric-val" id="w-precip">— mm</strong>
+            <span class="w-metric-sub">Observed / Hourly</span>
+          </div>
+        </div>
+        <div class="weather-metric-item">
+          <span class="w-metric-icon">💨</span>
+          <div class="w-metric-content">
+            <span class="w-metric-label">Wind Speed</span>
+            <strong class="w-metric-val" id="w-wind">— km/h</strong>
+            <span class="w-metric-sub">Surface Wind @ 10m</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Triple Concept Comparison: Live vs Historical vs Scenario -->
+      <div class="weather-concept-comparison">
+        <div class="concept-item concept-live">
+          <span class="concept-tag tag-live">LIVE WEATHER</span>
+          <strong class="concept-val" id="cmp-live-val">— °C · — mm</strong>
+          <span class="concept-sub">Open-Meteo Current API</span>
+        </div>
+        <div class="concept-item concept-historical">
+          <span class="concept-tag tag-hist">HISTORICAL IMD</span>
+          <strong class="concept-val" id="cmp-hist-val">96.9 mm P95</strong>
+          <span class="concept-sub">5-Year Feature Baseline</span>
+        </div>
+        <div class="concept-item concept-scenario">
+          <span class="concept-tag tag-scen">RAINFALL SCENARIO</span>
+          <strong class="concept-val" id="cmp-scen-val">1.00× Baseline</strong>
+          <span class="concept-sub">Hypothetical Simulation</span>
+        </div>
+      </div>
+
+      <!-- Scientific Distinction & Governance Notice -->
+      <div class="weather-governance-notice">
+        <strong>DATA & MODEL GOVERNANCE:</strong>
+        <p>Current weather is shown as contextual information. The displayed susceptibility score is produced by the existing PU spatial model and is not automatically modified by live weather. Rainfall Scenario remains an in-memory simulation.</p>
+      </div>
+    </section>
+
+    <!-- Floating Evacuation Intelligence & Designated Shelter Router Panel (Desktop Left/Right or Mobile Bottom Sheet) -->
+    <section class="gmap-shelter-panel" id="shelter-panel" aria-label="Evacuation Intelligence and Designated Shelter Router" style="display: none;">
+      <!-- Mobile Drag Handle -->
+      <div class="mobile-sheet-handle" aria-hidden="true"></div>
+
+      <div class="shelter-panel-header">
+        <div class="shelter-header-left">
+          <span class="shelter-panel-badge">EVACUATION INTELLIGENCE</span>
+          <h3 class="shelter-panel-title">Evacuation Intelligence</h3>
+          <p class="shelter-panel-sub">Route planning based on selected/current location and designated shelter locations.</p>
+        </div>
+        <button id="btn-close-shelter-panel" class="shelter-close-btn" aria-label="Close evacuation intelligence panel" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Location Selection Controls -->
+      <div class="shelter-location-box">
+        <span class="location-box-label">Set Evacuation Origin</span>
+        <div class="location-btn-row">
+          <button id="btn-use-my-location" class="btn-location-action btn-my-loc" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Use My Location</span>
+          </button>
+          <button id="btn-select-map-location" class="btn-location-action btn-map-loc" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
+            <span>Select on Map</span>
+          </button>
+        </div>
+        <div class="active-origin-status" id="origin-status-text">
+          <span class="origin-dot"></span>
+          <span class="origin-desc" id="origin-desc-label">Origin: Default Center (Ooty, Nilgiris)</span>
+        </div>
+      </div>
+
+      <!-- Origin Location & Modeled Risk Context Card -->
+      <div class="evac-location-context-card" id="evac-location-context-card">
+        <div class="evac-card-header">
+          <span class="evac-card-tag">YOUR LOCATION CONTEXT</span>
+          <span class="evac-coords-chip" id="evac-origin-coords">11.4102° N, 76.6950° E</span>
+        </div>
+        
+        <div class="evac-village-match-row">
+          <div class="evac-match-info">
+            <span class="evac-match-sub">Nearby Modeled Village</span>
+            <strong class="evac-match-name" id="evac-matched-village-name">Udhagamandalam Urban</strong>
+            <span class="evac-match-taluk" id="evac-matched-village-taluk">Taluk: Udhagamandalam · LGD: 221001</span>
+          </div>
+          <div class="evac-match-badge-wrap">
+            <span id="evac-matched-tier-badge" class="tier-chip tier-high">HIGH</span>
+          </div>
+        </div>
+
+        <!-- Modeled Susceptibility & Scenario Delta Breakdown -->
+        <div class="evac-risk-breakdown" id="evac-risk-breakdown">
+          <div class="evac-risk-metric-col">
+            <span class="evac-metric-label">Modeled Susceptibility</span>
+            <div class="evac-score-inline">
+              <strong id="evac-matched-score" class="evac-score-num">83.5</strong>
+              <span class="evac-score-denom">/ 100</span>
+            </div>
+            <span class="evac-metric-sub">Relative spatial index</span>
+          </div>
+          <div class="evac-risk-delta-col">
+            <span class="evac-metric-label">Scenario Impact</span>
+            <strong id="evac-matched-delta" class="evac-delta-val delta-pos">Δ +8.6 pts</strong>
+            <span class="evac-metric-sub" id="evac-matched-scenario-name">1.50x Heavy</span>
+          </div>
+        </div>
+
+        <div class="evac-risk-notice" id="evac-risk-notice">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="evac-risk-notice-text">This score represents modeled spatial susceptibility and is not a live disaster prediction.</span>
+        </div>
+
+        <!-- Evacuation Live Weather Context -->
+        <div class="evac-weather-chip-row">
+          <span class="evac-weather-chip" id="evac-weather-chip">🌦️ Live Context: Loading weather data…</span>
+        </div>
+      </div>
+
+      <!-- Nearest Shelter Hero Card -->
+      <div class="nearest-shelter-hero" id="nearest-shelter-hero">
+        <div class="hero-shelter-top">
+          <span class="badge-tag tag-green">NEAREST DESIGNATED SHELTER</span>
+          <span class="shelter-distance-chip" id="hero-shelter-distance">1.8 km</span>
+        </div>
+        <h4 class="hero-shelter-name" id="hero-shelter-name">Government Arts College Relief Center (DEMO)</h4>
+        <div class="hero-shelter-meta">
+          <span id="hero-shelter-taluk">Taluk: Udhagamandalam</span> · <span id="hero-shelter-cap">Cap: 250 persons</span>
+        </div>
+        <p class="hero-shelter-addr" id="hero-shelter-addr">Stone House Hill, Udhagamandalam, Nilgiris 643002</p>
+
+        <!-- Route Estimates -->
+        <div class="route-metrics-row">
+          <div class="route-metric">
+            <span class="metric-label">Distance</span>
+            <strong class="metric-val" id="route-dist-val">1.8 km</strong>
+            <span class="metric-sub" id="route-dist-type">Direct Haversine</span>
+          </div>
+          <div class="route-metric">
+            <span class="metric-label">Est. Driving</span>
+            <strong class="metric-val" id="route-drive-time">~6 mins</strong>
+            <span class="metric-sub">Mountain Terrain @ 25km/h</span>
+          </div>
+          <div class="route-metric">
+            <span class="metric-label">Est. Walking</span>
+            <strong class="metric-val" id="route-walk-time">~31 mins</strong>
+            <span class="metric-sub">Hilly Pace @ 3.5km/h</span>
+          </div>
+        </div>
+
+        <div class="route-actions-row">
+          <button id="btn-draw-route" class="btn-route-action btn-primary-route" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+            <span id="btn-draw-route-label">Display Evacuation Route</span>
+          </button>
+          <button id="btn-clear-route" class="btn-route-action btn-secondary-route" type="button" style="display: none;">
+            Clear Route
+          </button>
+        </div>
+
+        <div class="shelter-contact-row">
+          <span class="contact-label">Emergency Authority:</span>
+          <span class="contact-value">Nilgiris DDMA Relief (1077) · Demo representation</span>
+        </div>
+      </div>
+
+      <!-- Smart Route Context & Limitations Box -->
+      <div class="evac-route-context-box" id="evac-route-context-box">
+        <div class="context-box-header">
+          <span class="context-box-title">SMART ROUTE CONTEXT</span>
+          <span class="context-status-pill" id="route-network-status">OSRM Ready</span>
+        </div>
+        <div class="context-grid">
+          <div class="context-grid-item">
+            <span class="c-label">Origin Susceptibility</span>
+            <strong class="c-val" id="ctx-origin-tier">HIGH (83.5)</strong>
+          </div>
+          <div class="context-grid-item">
+            <span class="c-label">Rainfall Scenario</span>
+            <strong class="c-val" id="ctx-rainfall-scen">1.00× Baseline</strong>
+          </div>
+          <div class="context-grid-item">
+            <span class="c-label">Shelter Proximity</span>
+            <strong class="c-val" id="ctx-shelter-dist">1.8 km Direct</strong>
+          </div>
+          <div class="context-grid-item">
+            <span class="c-label">Road Routing</span>
+            <strong class="c-val" id="ctx-routing-mode">OSRM / OpenStreetMap</strong>
+          </div>
+        </div>
+        <p class="context-disclaimer">
+          Route planning uses available mapped road-network data. Real-time landslide, flooding, traffic, bridge, or road-closure conditions are not currently available. Verify current road and shelter status with local authorities before evacuation.
+        </p>
+      </div>
+
+      <!-- Other Nearby Shelters List -->
+      <div class="nearby-shelters-section">
+        <span class="nearby-title">All Designated Shelters (Sorted by Proximity)</span>
+        <div class="nearby-shelters-list" id="nearby-shelters-list" role="listbox">
+          <!-- Populated dynamically by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Scientific & Operational Shelter Disclaimer -->
+      <div class="shelter-disclaimer-box">
+        <strong>DEMONSTRATION SHELTER DATASET:</strong>
+        <p>Shelter locations are designated demo representations for disaster decision-support and route planning. Real-world operational opening status, accessibility, and current safety must be verified with the Nilgiris District Disaster Management Authority (DDMA / Revenue Dept). Do not assume any shelter is guaranteed safe without official authority clearance.</p>
+      </div>
+    </section>
+
+    <!-- Floating Emergency Alert Center (Desktop Floating Right / Mobile Bottom Sheet) -->
+    <section class="gmap-emergency-panel" id="emergency-panel" role="dialog" aria-modal="false" aria-label="Emergency Alert Center" style="display: none;">
+      <!-- Mobile Drag Handle -->
+      <div class="mobile-sheet-handle" aria-hidden="true"></div>
+
+      <!-- Emergency Header -->
+      <div class="emergency-panel-header">
+        <div class="emergency-header-left">
+          <div class="emergency-title-row">
+            <span class="emergency-alert-badge">🚨 EMERGENCY INFORMATION</span>
+            <span class="emergency-status-dot" id="em-status-dot"></span>
+            <span class="emergency-status-label" id="em-status-label">ACTIVE CONTEXT</span>
+          </div>
+          <h3 class="emergency-panel-title" id="em-location-title">Nilgiris Emergency Center</h3>
+          <p class="emergency-panel-sub" id="em-location-sub">Village-level risk context, real-time weather observations, and nearest shelter navigation.</p>
+        </div>
+        <button id="btn-close-emergency" class="emergency-close-btn" aria-label="Close emergency alert center" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Quick Action Bar -->
+      <div class="emergency-quick-actions" role="toolbar" aria-label="Emergency quick actions">
+        <button id="em-btn-my-loc" class="em-action-btn" type="button" aria-label="Use my GPS location">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span>My Location</span>
+        </button>
+        <button id="em-btn-pick-map" class="em-action-btn" type="button" aria-label="Select location on map">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
+          <span>Select on Map</span>
+        </button>
+        <button id="em-btn-nearest-shelter" class="em-action-btn" type="button" aria-label="View nearest designated shelter">
+          <span class="em-btn-emoji">🏛️</span>
+          <span>Nearest Shelter</span>
+        </button>
+        <button id="em-btn-share" class="em-action-btn em-action-share" type="button" aria-label="Share emergency context">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          <span>Share</span>
+        </button>
+      </div>
+
+      <!-- Scrollable Body Content -->
+      <div class="emergency-panel-body">
+        <!-- Selected Location Box -->
+        <div class="em-section-card em-location-card">
+          <div class="em-card-sublabel">SELECTED LOCATION</div>
+          <div class="em-loc-main-row">
+            <div>
+              <h4 class="em-loc-village" id="em-village-name">Kodanad</h4>
+              <div class="em-loc-details" id="em-village-taluk-lgd">Kotagiri · LGD 635099</div>
+            </div>
+            <div id="em-tier-badge" class="tier-chip tier-high">HIGH</div>
+          </div>
+          <div class="em-coords-row" id="em-coords-text">11.5178° N, 76.9144° E</div>
+        </div>
+
+        <!-- Modeled Susceptibility & Risk Context -->
+        <div class="em-section-card em-risk-card">
+          <div class="em-card-sublabel">CURRENT MODELED RISK</div>
+          <div class="em-risk-score-row">
+            <div class="em-score-big">
+              <strong id="em-score-val">83.5</strong>
+              <span class="em-score-max">/ 100</span>
+            </div>
+            <div class="em-risk-explanation-col">
+              <div class="em-tier-title" id="em-tier-title">HIGH SUSCEPTIBILITY</div>
+              <div class="em-tier-msg" id="em-tier-msg">High modeled susceptibility for this location under the selected scenario.</div>
+            </div>
+          </div>
+          
+          <div class="em-score-progress-wrap">
+            <div class="em-score-progress-bar" id="em-score-bar" style="width: 83.5%;"></div>
+          </div>
+
+          <!-- Risk Context / Scenario Delta -->
+          <div class="em-risk-context-grid">
+            <div class="em-ctx-item">
+              <span class="em-ctx-label">Baseline</span>
+              <strong class="em-ctx-val" id="em-base-score">83.5</strong>
+            </div>
+            <div class="em-ctx-item">
+              <span class="em-ctx-label">Current Scenario</span>
+              <strong class="em-ctx-val" id="em-scen-score">83.5</strong>
+            </div>
+            <div class="em-ctx-item">
+              <span class="em-ctx-label">Scenario Delta</span>
+              <strong class="em-ctx-val delta-pos" id="em-delta-score">Δ 0.0</strong>
+            </div>
+          </div>
+
+          <!-- PU Status Transparency Section -->
+          <div class="em-pu-status-box" id="em-pu-box">
+            <div class="em-pu-header">
+              <span class="em-pu-tag" id="em-pu-tag">PU Status: POSITIVE</span>
+            </div>
+            <p class="em-pu-desc" id="em-pu-desc">Historical GSI event evidence is available for this modeled location.</p>
+          </div>
+        </div>
+
+        <!-- Live Weather Context -->
+        <div class="em-section-card em-weather-card">
+          <div class="em-card-header-row">
+            <div class="em-card-sublabel">LIVE WEATHER CONTEXT</div>
+            <span class="em-weather-time" id="em-weather-time">Observed: Just now</span>
+          </div>
+          <div class="em-weather-grid">
+            <div class="em-w-col">
+              <span class="em-w-icon">🌡️</span>
+              <span class="em-w-label">Temperature</span>
+              <strong class="em-w-val" id="em-w-temp">— °C</strong>
+            </div>
+            <div class="em-w-col">
+              <span class="em-w-icon">💧</span>
+              <span class="em-w-label">Humidity</span>
+              <strong class="em-w-val" id="em-w-hum">— %</strong>
+            </div>
+            <div class="em-w-col">
+              <span class="em-w-icon">🌧️</span>
+              <span class="em-w-label">Rainfall</span>
+              <strong class="em-w-val" id="em-w-precip">— mm</strong>
+            </div>
+            <div class="em-w-col">
+              <span class="em-w-icon">💨</span>
+              <span class="em-w-label">Wind</span>
+              <strong class="em-w-val" id="em-w-wind">— km/h</strong>
+            </div>
+          </div>
+          <div class="em-weather-condition-row">
+            <span class="em-w-cond-label">Condition:</span>
+            <strong class="em-w-cond-val" id="em-w-cond">Partly cloudy</strong>
+          </div>
+          <p class="em-weather-disclaimer">Contextual observation only — not a live flood prediction or official warning.</p>
+        </div>
+
+        <!-- Rainfall Scenario -->
+        <div class="em-section-card em-scenario-card">
+          <div class="em-card-sublabel">RAINFALL SCENARIO</div>
+          <div class="em-scenario-row">
+            <div>
+              <strong class="em-scenario-name" id="em-scen-name">Historical Baseline</strong>
+              <div class="em-scenario-factor" id="em-scen-factor">1.00× Baseline Multiplier</div>
+            </div>
+            <span class="em-scenario-pill">SIMULATION</span>
+          </div>
+          <p class="em-scenario-note">Scenario simulation — not a live warning.</p>
+        </div>
+
+        <!-- Nearest Designated Shelter -->
+        <div class="em-section-card em-shelter-card">
+          <div class="em-card-sublabel">NEAREST DESIGNATED SHELTER</div>
+          <div class="em-shelter-top-row">
+            <h4 class="em-shelter-name" id="em-shelter-name">Government Arts College Relief Center (DEMO)</h4>
+            <span class="em-shelter-dist-pill" id="em-shelter-dist">1.8 km</span>
+          </div>
+          <div class="em-shelter-meta" id="em-shelter-meta">Taluk: Udhagamandalam · Capacity: 250 persons</div>
+          <div class="em-shelter-addr" id="em-shelter-addr">Stone House Hill, Udhagamandalam, Nilgiris 643002</div>
+
+          <div class="em-shelter-estimates">
+            <div class="em-est-item">
+              <span class="em-est-label">Est. Driving</span>
+              <strong class="em-est-val" id="em-drive-time">~6 mins</strong>
+            </div>
+            <div class="em-est-item">
+              <span class="em-est-label">Est. Walking</span>
+              <strong class="em-est-val" id="em-walk-time">~31 mins</strong>
+            </div>
+          </div>
+
+          <div class="em-shelter-btn-row">
+            <button id="em-btn-view-shelter" class="em-btn-secondary" type="button">
+              <span>View Shelter</span>
+            </button>
+            <button id="em-btn-plan-route" class="em-btn-primary" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+              <span>Plan Route</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Official Emergency Information -->
+        <div class="em-section-card em-official-card">
+          <div class="em-official-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span class="em-official-title">OFFICIAL EMERGENCY INFORMATION</span>
+          </div>
+          <p class="em-official-text">
+            FloodGuard does not issue official evacuation orders or disaster warnings. Follow instructions from Nilgiris District Disaster Management Authority, local administration, police, fire and rescue services, and other official authorities.
+          </p>
+
+          <div class="em-helpline-box">
+            <div class="em-helpline-main">
+              <span class="em-helpline-label">Nilgiris DDMA Emergency Helpline</span>
+              <a href="tel:1077" class="em-helpline-num" aria-label="Call Nilgiris DDMA Emergency Helpline at 1077">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                <span>1077</span>
+              </a>
+            </div>
+            <div class="em-helpline-subs">
+              <span>Police: <strong>100</strong></span> · 
+              <span>Fire & Rescue: <strong>101</strong></span> · 
+              <span>Ambulance: <strong>108</strong></span> · 
+              <span>Emergency: <strong>112</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data Source Labels -->
+        <div class="em-sources-box">
+          <div class="em-source-item">
+            <span class="em-src-key">MODELLED RISK:</span>
+            <span class="em-src-val">Baseline modeled susceptibility · PU-weighted XGBoost proxy</span>
+          </div>
+          <div class="em-source-item">
+            <span class="em-src-key">LIVE WEATHER:</span>
+            <span class="em-src-val">Open-Meteo observation</span>
+          </div>
+          <div class="em-source-item">
+            <span class="em-src-key">HISTORICAL RAINFALL:</span>
+            <span class="em-src-val">IMD dataset (1981–2020)</span>
+          </div>
+          <div class="em-source-item">
+            <span class="em-src-key">HISTORICAL EVENT EVIDENCE:</span>
+            <span class="em-src-val">GSI landslide inventory</span>
+          </div>
+          <div class="em-source-item">
+            <span class="em-src-key">ROUTE:</span>
+            <span class="em-src-val">OpenStreetMap / OSRM</span>
+          </div>
+        </div>
+
+        <!-- Governance Notice -->
+        <div class="em-governance-notice">
+          <strong>IMPORTANT GOVERNANCE NOTICE:</strong>
+          <p>
+            FloodGuard is a demonstration spatial susceptibility and rainfall-scenario system. It does not issue official disaster warnings, evacuation orders, or guaranteed-safe routes. Live weather and routing information may differ from local conditions. For emergencies, follow instructions from official authorities.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Floating Current Risk Overview Card (Top-Right Below Header) -->
+    <section class="gmap-overview-card" id="risk-overview-card" aria-label="District Susceptibility Overview">
+      <div class="overview-header">
+        <span class="overview-title">MODELED SCENARIO RISK</span>
+        <span class="overview-scope" id="overview-scenario-context">Scenario: Baseline</span>
+      </div>
+      <div class="overview-counts-row">
+        <div class="count-item count-high" title="High Susceptibility Tier (Score ≥ 60.0)">
+          <strong id="overview-count-high" class="count-val">11</strong>
+          <span class="count-label">HIGH</span>
+        </div>
+        <div class="count-item count-med" title="Medium Susceptibility Tier (Score 30.0–59.9)">
+          <strong id="overview-count-med" class="count-val">20</strong>
+          <span class="count-label">MEDIUM</span>
+        </div>
+        <div class="count-item count-low" title="Low Susceptibility Tier (Score < 30.0)">
+          <strong id="overview-count-low" class="count-val">9</strong>
+          <span class="count-label">LOW</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Floating Map Risk Legend (Bottom-Right) -->
+    <div class="gmap-legend-card is-collapsed" id="map-legend-card" aria-label="Susceptibility & Landslide Warning Legend">
+      <button id="btn-toggle-legend" class="legend-toggle" aria-controls="legend-details" aria-expanded="false" type="button">
+        <span>Legend</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div id="legend-details" class="legend-details">
+      <!-- Section 1: Landslide Susceptibility -->
+      <div class="legend-section-title">LANDSLIDE SUSCEPTIBILITY</div>
+      <div class="legend-items-list">
+        <div class="legend-item">
+          <span class="legend-dot dot-high"></span>
+          <span class="legend-label">High — 60 and above</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot dot-medium"></span>
+          <span class="legend-label">Medium — 30 to 59.9</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot dot-low"></span>
+          <span class="legend-label">Low — below 30</span>
+        </div>
+      </div>
+
+      <div class="legend-divider"></div>
+
+      <!-- Section 2: Landslide Warning -->
+      <div class="legend-section-title">LANDSLIDE WARNING</div>
+      <div class="legend-items-list">
+        <div class="legend-item">
+          <span class="legend-dot dot-warning-pulse"></span>
+          <span class="legend-label"><strong>🔴 Warning</strong> — Predicted possible event</span>
+        </div>
+      </div>
+
+      <div class="legend-divider"></div>
+
+      <!-- Section 3: Evidence -->
+      <div class="legend-section-title">EVIDENCE</div>
+      <div class="legend-items-list">
+        <div class="legend-item">
+          <span class="legend-dot dot-coral"></span>
+          <span class="legend-label">Past Landslide Locations — 772</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot dot-shelter"></span>
+          <span class="legend-label">Shelter Locations — 10 DEMO</span>
+        </div>
+      </div>
+
+      <div class="legend-divider"></div>
+
+      <!-- Section 4: Weather -->
+      <div class="legend-section-title">WEATHER</div>
+      <div class="legend-items-list">
+        <div class="legend-item">
+          <span class="legend-dot dot-weather"></span>
+          <span class="legend-label">Current Weather — Open-Meteo</span>
+        </div>
+      </div>
+
+      <!-- Subtext Explanation -->
+      <div class="legend-footer-note">
+        Susceptibility shows underlying vulnerability. Warning indicates predicted event conditions.
+      </div>
+      </div>
+    </div>
+
+    <!-- Floating Map Action Controls (Right Center) -->
+    <nav class="gmap-map-controls" role="toolbar" aria-label="Map Interaction Toolbar">
+      <div class="control-group">
+        <button id="btn-zoom-in" class="gmap-control-btn" title="Zoom In" aria-label="Zoom In" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button id="btn-zoom-out" class="gmap-control-btn" title="Zoom Out" aria-label="Zoom Out" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+      </div>
+
+      <div class="control-group">
+        <button id="btn-reset-map" class="gmap-control-btn" title="Center Nilgiris District" aria-label="Center Nilgiris District" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+        </button>
+        <button id="btn-toggle-layers" class="gmap-control-btn" title="Layer Visibility Toggles" aria-label="Layer Visibility Toggles" aria-expanded="false" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </button>
+        <button id="btn-fullscreen" class="gmap-control-btn" title="Toggle Fullscreen" aria-label="Toggle Fullscreen" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        </button>
+      </div>
+
+      <!-- Layers Popup Panel -->
+      <div id="layers-popup" class="gmap-layers-popup" style="display: none;" role="menu" aria-label="Map Layer Selection">
+        <div class="layers-popup-title">Map Layers</div>
+        <label class="custom-toggle">
+          <input type="checkbox" id="toggle-susceptibility" checked>
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Susceptibility Zones (40)</span>
+        </label>
+        <label class="custom-toggle" title="Colors the supported village polygons by decision-support warning stage; this does not replace the baseline susceptibility view.">
+          <input type="checkbox" id="toggle-warning-view">
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Warning Stage (decision support)</span>
+        </label>
+        <label class="custom-toggle">
+          <input type="checkbox" id="toggle-shelters" checked>
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Designated Shelters (10 DEMO)</span>
+        </label>
+        <label class="custom-toggle">
+          <input type="checkbox" id="toggle-weather" checked>
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Weather Context Marker (Open-Meteo)</span>
+        </label>
+        <label class="custom-toggle">
+          <input type="checkbox" id="toggle-events" checked>
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Past Landslides (772 GSI)</span>
+        </label>
+        <label class="custom-toggle">
+          <input type="checkbox" id="toggle-boundaries" checked>
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Administrative Boundaries</span>
+        </label>
+        <label class="custom-toggle">
+          <input type="checkbox" id="toggle-centroids" checked>
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Village Markers</span>
+        </label>
+        <label class="custom-toggle" title="Registered soil-moisture sensors with known map coordinates.">
+          <input type="checkbox" id="toggle-sensors" checked>
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">ESP32 Sensors</span>
+        </label>
+        <label class="custom-toggle" title="Transparent log-scaled map preview; raw upstream-cell counts are retained separately.">
+          <input type="checkbox" id="toggle-flow-accumulation">
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Flow Accumulation (DEM-derived)</span>
+        </label>
+        <label class="custom-toggle" title="Generalized terrain-derived D8 drainage linework; not authoritative mapped hydrography.">
+          <input type="checkbox" id="toggle-drainage-network">
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">Drainage Network (DEM-derived)</span>
+        </label>
+      </div>
+    </nav>
+
+    <!-- Floating Scenario Simulator Drawer (On-demand right drawer / bottom sheet) -->
+    <section class="gmap-scenario-card" id="scenario-panel" aria-label="Rainfall Scenario Experiment" style="display: none;">
+      <!-- Mobile Drag Handle -->
+      <div class="mobile-sheet-handle" aria-hidden="true"></div>
+
+      <div class="scenario-card-header">
+        <div class="scenario-header-left">
+          <div class="scenario-title-row">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><line x1="8" y1="16" x2="8.01" y2="16"/><line x1="8" y1="20" x2="8.01" y2="20"/><line x1="12" y1="18" x2="12.01" y2="18"/><line x1="12" y1="22" x2="12.01" y2="22"/><line x1="16" y1="16" x2="16.01" y2="16"/><line x1="16" y1="20" x2="16.01" y2="20"/></svg>
+            <div class="scenario-header-titles">
+              <span class="scenario-title">RAINFALL SCENARIO</span>
+              <span class="scenario-subtitle">Adjust rainfall manually to see how the modeled susceptibility changes.</span>
+            </div>
+          </div>
+        </div>
+        <div class="scenario-header-actions">
+          <span class="badge-tag tag-cyan" id="scenario-status-badge">Normal Rainfall · 1.00×</span>
+          <button id="btn-close-scenario" class="scenario-close-btn" aria-label="Close rainfall scenario panel" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Preset Buttons Row -->
+      <div class="scenario-presets-wrap">
+        <span class="scenario-section-label">QUICK SCENARIO PRESETS</span>
+        <div class="scenario-presets-row" role="group" aria-label="Precipitation Scenario Presets">
+          <button class="preset-btn" data-scenario="moderate" title="0.70x lower precipitation than baseline" type="button">
+            <strong class="preset-mult">0.70×</strong>
+            <span class="preset-desc">Lower Rainfall</span>
+          </button>
+          <button class="preset-btn active" data-scenario="baseline" title="1.00x normal baseline climatology" type="button">
+            <strong class="preset-mult">1.00×</strong>
+            <span class="preset-desc">Normal Rainfall</span>
+          </button>
+          <button class="preset-btn" data-scenario="heavy" title="1.50x heavy monsoon precipitation" type="button">
+            <strong class="preset-mult">1.50×</strong>
+            <span class="preset-desc">Heavy Rainfall</span>
+          </button>
+          <button class="preset-btn" data-scenario="extreme" title="2.20x very heavy torrential precipitation" type="button">
+            <strong class="preset-mult">2.20×</strong>
+            <span class="preset-desc">Very Heavy Rainfall</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Custom Multiplier Slider -->
+      <div class="scenario-slider-box">
+        <div class="slider-label-row">
+          <span class="slider-label">MANUAL RAINFALL MULTIPLIER</span>
+          <button class="btn-reset-scenario" id="btn-reset-scenario" title="Reset scenario to 1.00x normal baseline" type="button">Reset to Normal</button>
+        </div>
+        <div class="slider-scale-guide">
+          <span>0.70×</span>
+          <span class="scale-divider">─────────●─────────</span>
+          <span>2.20×</span>
+        </div>
+        <div class="slider-input-row">
+          <input id="scenario-slider" type="range" min="0.5" max="3.0" step="0.1" value="1.0" aria-label="Simulated precipitation multiplier">
+        </div>
+        <output id="scenario-value" class="slider-output">Current multiplier: 1.00×</output>
+      </div>
+
+      <!-- Selected Village Experiment Result Card (Visible when a village is active) -->
+      <div class="scenario-experiment-card" id="scenario-experiment-card">
+        <div class="experiment-card-header">
+          <span class="exp-card-tag">SELECTED VILLAGE EXPERIMENT RESULT</span>
+          <strong class="exp-village-name" id="scen-exp-village-name">Select a village on the map or list</strong>
+        </div>
+        <div class="experiment-metrics-row">
+          <div class="exp-metric-col">
+            <span class="exp-metric-label">BASELINE SCORE</span>
+            <strong class="exp-metric-val" id="scen-exp-base-score">—</strong>
+            <span class="exp-metric-sub">1.00× Normal</span>
+          </div>
+          <div class="exp-metric-col">
+            <span class="exp-metric-label">CURRENT SCENARIO</span>
+            <strong class="exp-metric-val" id="scen-exp-scen-score">—</strong>
+            <span class="exp-metric-sub" id="scen-exp-factor-label">1.00× Multiplier</span>
+          </div>
+          <div class="exp-metric-col exp-metric-delta">
+            <span class="exp-metric-label">CHANGE</span>
+            <strong class="exp-metric-val delta-val" id="scen-exp-delta-val">+0.0 points</strong>
+            <span class="exp-metric-sub">Modeled effect</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- How It Works Section -->
+      <div class="scenario-how-it-works">
+        <span class="how-title">HOW IT WORKS</span>
+        <ol class="how-steps-list">
+          <li>Terrain stays the same.</li>
+          <li>Historical event information stays the same.</li>
+          <li>Rainfall is changed for the simulation.</li>
+          <li>FloodGuard recalculates the modeled susceptibility.</li>
+          <li>The change is compared with the baseline.</li>
+        </ol>
+      </div>
+
+      <!-- Non-Destructive Simulation Disclaimer -->
+      <div class="scenario-disclaimer-text">
+        <span class="sim-badge">SIMULATION ONLY</span>
+        <span>This is a manual rainfall experiment, not a live rainfall forecast or emergency warning.</span>
+      </div>
+    </section>
+
+    <!-- Floating Village Detail Panel / Bottom Sheet (Desktop Right / Mobile Bottom) -->
+    <aside class="gmap-village-detail-panel" id="village-detail-panel" aria-label="Selected Village Detailed Intelligence" style="display: none;">
+      <!-- Mobile Drag Handle -->
+      <div class="mobile-sheet-handle" aria-hidden="true"></div>
+
+      <div class="detail-top-bar">
+        <div class="detail-header-left">
+          <span class="badge-label" id="detail-pu-label">HISTORICAL GSI EVENT EVIDENCE</span>
+          <h2 id="detail-village-name" class="detail-village-title">Select Village</h2>
+          <div class="detail-meta-sub">
+            <span id="detail-village-taluk">Taluk: —</span> · <span id="detail-village-lgd" class="mono">Code: —</span>
+          </div>
+        </div>
+        <div class="detail-header-right">
+          <button id="btn-close-detail" class="detail-close-btn" aria-label="Close village detail panel" type="button">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <div class="detail-badge-group">
+            <span id="detail-tier-badge" class="tier-chip tier-high">HIGH</span>
+            <span id="detail-delta-badge" class="delta-chip delta-zero">+0.0 points</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hero Score Box -->
+      <div class="hero-score-box">
+        <div class="score-meta-row">
+          <span class="score-label">Baseline Modeled Susceptibility</span>
+          <span class="score-scale">Terrain · Hydrology · Historical Rainfall</span>
+        </div>
+        <div class="score-number-row">
+          <span id="detail-index" class="score-number">—</span>
+          <span class="score-denom">/ 100</span>
+        </div>
+        <div class="score-bar-track" aria-hidden="true">
+          <div id="detail-score-bar" class="score-bar-fill" style="width: 0%;"></div>
+        </div>
+        
+        <!-- Scenario Impact Breakdown -->
+        <div class="scenario-impact-box">
+          <div class="impact-header">
+            <span class="impact-title">SCENARIO-ADJUSTED MODELED RISK</span>
+            <span class="impact-note" id="detail-delta-note">Simulated rainfall vs baseline</span>
+          </div>
+          <div class="score-baseline-comparison">
+            <div class="comp-col">
+              <span class="comp-sub-label">Baseline susceptibility</span>
+              <strong id="detail-base-score" class="comp-sub-val">—</strong>
+            </div>
+            <div class="comp-col-arrow">→</div>
+            <div class="comp-col">
+              <span class="comp-sub-label">Scenario-adjusted risk</span>
+              <strong id="detail-scenario-score" class="comp-sub-val">—</strong>
+            </div>
+            <div class="comp-col comp-col-delta">
+              <span class="comp-sub-label">Score Change</span>
+              <strong id="detail-delta-val" class="comp-sub-val delta-val">+0.0 points</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Decision-support warning stage -->
+      <div class="village-warning-card" id="village-warning-card">
+        <div class="v-warn-header">
+          <div class="v-warn-title-wrap">
+            <span class="v-warn-sublabel">WARNING STATUS · DECISION SUPPORT</span>
+            <div class="v-warn-status-row">
+              <span id="detail-warn-icon" class="v-warn-icon">✓</span>
+              <strong id="detail-warn-status" class="v-warn-status-text">LOADING WARNING STATUS</strong>
+            </div>
+          </div>
+          <span id="detail-warn-badge" class="v-warn-chip warn-chip-none">NORMAL</span>
+        </div>
+
+        <!-- Trigger Conditions Breakdown -->
+        <div class="v-warn-body">
+          <div class="v-warn-why-label">WHY THIS STAGE?</div>
+          <ul class="v-warn-reasons" id="detail-warn-reasons">
+            <li>Warning factors are loading.</li>
+          </ul>
+
+          <div class="v-warn-action-box">
+            <span class="v-action-label">RECOMMENDED ACTION:</span>
+            <p id="detail-warn-action" class="v-action-text">Follow instructions from local disaster-management authorities.</p>
+          </div>
+
+          <div class="v-warn-disclaimer">
+            FloodGuard provides modeled decision-support information and does not replace official alerts from government disaster-management authorities.
+          </div>
+        </div>
+      </div>
+
+      <!-- External alert delivery is intentionally not implemented -->
+      <div class="notification-workflow-card" id="notification-workflow-card">
+        <div class="notif-header">
+          <span class="notif-badge">OFFICIAL ALERTS</span>
+          <span class="notif-stage-label" id="notif-stage-label">Pipeline Ready</span>
+        </div>
+        <div class="notif-pipeline">
+          <div class="notif-step notif-step-active">
+            <span class="notif-step-num">1</span>
+            <span class="notif-step-name">Village</span>
+          </div>
+          <div class="notif-step-arrow">→</div>
+          <div class="notif-step notif-step-active" id="notif-step-decision">
+            <span class="notif-step-num">2</span>
+            <span class="notif-step-name">Warning Decision</span>
+          </div>
+          <div class="notif-step-arrow">→</div>
+          <div class="notif-step" id="notif-step-recipients">
+            <span class="notif-step-num">3</span>
+            <span class="notif-step-name">Recipients</span>
+          </div>
+          <div class="notif-step-arrow">→</div>
+          <div class="notif-step" id="notif-step-dispatch">
+            <span class="notif-step-num">4</span>
+            <span class="notif-step-name">Dispatch</span>
+          </div>
+        </div>
+
+        <div class="notif-details">
+          <div class="notif-recipients-row">
+            <span class="notif-rec-key">Recipients:</span>
+            <span class="notif-rec-val">Not configured · No alert transmission</span>
+          </div>
+          <div class="notif-status-row">
+            <span class="notif-status-key">Status:</span>
+            <span class="notif-status-val" id="notif-status-text">FloodGuard does not send emergency notifications. Follow official authority instructions.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature Component Evidence Cards -->
+      <div class="components-grid" id="experimental-detail">
+        <div class="component-card">
+          <span class="comp-label">Terrain Slope</span>
+          <strong class="comp-val" id="comp-terrain">—</strong>
+          <span class="comp-sub" id="comp-terrain-raw">Mean & Max Slope</span>
+        </div>
+        <div class="component-card">
+          <span class="comp-label">Simulated 7D Rain</span>
+          <strong class="comp-val" id="comp-rain">—</strong>
+          <span class="comp-sub" id="comp-rain-raw">P95 mm (Simulated)</span>
+        </div>
+        <div class="component-card">
+          <span class="comp-label">Past Landslide Match</span>
+          <strong class="comp-val" id="comp-events">—</strong>
+          <span class="comp-sub" id="comp-events-raw">GSI Strict Containment</span>
+        </div>
+        <div class="component-card">
+          <span class="comp-label">Simulated 1D Peak</span>
+          <strong class="comp-val" id="comp-rain-1d">—</strong>
+          <span class="comp-sub" id="comp-rain-1d-raw">Max mm (Simulated)</span>
+        </div>
+      </div>
+
+      <!-- Live Weather Context for Selected Village -->
+      <div class="village-weather-box" id="village-weather-box">
+        <div class="v-weather-header">
+          <span class="v-weather-title">CURRENT WEATHER CONTEXT</span>
+          <span class="v-weather-status" id="v-weather-status">🟢 Live</span>
+        </div>
+        <div class="v-weather-grid">
+          <div class="v-weather-item">
+            <span class="v-w-label">Temp</span>
+            <strong class="v-w-val" id="v-w-temp">— °C</strong>
+          </div>
+          <div class="v-weather-item">
+            <span class="v-w-label">Precip</span>
+            <strong class="v-w-val" id="v-w-precip">— mm</strong>
+          </div>
+          <div class="v-weather-item">
+            <span class="v-w-label">Humidity</span>
+            <strong class="v-w-val" id="v-w-humidity">— %</strong>
+          </div>
+          <div class="v-weather-item">
+            <span class="v-w-label">Wind</span>
+            <strong class="v-w-val" id="v-w-wind">— km/h</strong>
+          </div>
+        </div>
+        <p class="v-weather-note">
+          Contextual observation near <span id="v-w-loc">this village</span>. Live weather data is not directly used by the PU spatial susceptibility model.
+        </p>
+      </div>
+
+      <!-- Village Evacuation Action -->
+      <div class="village-evac-action-card">
+        <button id="btn-village-evacuate" class="btn-village-evacuate" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span>Plan Evacuation from this Village</span>
+        </button>
+      </div>
+
+      <!-- GSI Evidence Quick Action -->
+      <div class="gsi-evidence-action-card">
+        <div class="gsi-action-info">
+          <span class="gsi-action-title">GSI / NLFC Evidence</span>
+          <span class="gsi-action-desc" id="detail-gsi-desc">Historical landslide inventory record</span>
+        </div>
+        <button id="btn-view-village-evidence" class="btn-view-evidence" type="button">View Evidence</button>
+      </div>
+
+      <section class="village-context-sources" aria-label="Selected village data status and provenance">
+        <h4 class="provenance-title">Data status & provenance</h4>
+        <div id="village-context-provenance" class="context-source-list" role="status" aria-live="polite">
+          Select a village to load its available data-source details.
+        </div>
+      </section>
+
+      <!-- Provenance & Governance Checklist -->
+      <div class="provenance-section">
+        <h4 class="provenance-title">Model Governance & Provenance Checklist</h4>
+        <dl class="provenance-list" id="experimental-provenance">
+          <div class="prov-row"><dt>Baseline output</dt><dd>Terrain + hydrology + historical rainfall</dd></div>
+          <div class="prov-row"><dt>Model Type</dt><dd id="prov-model-type">Positive-Unlabeled weighted XGBoost proxy</dd></div>
+          <div class="prov-row"><dt>Validation</dt><dd id="prov-validation">6-fold Leave-One-Taluk-Out</dd></div>
+          <div class="prov-row"><dt>Universe</dt><dd>40 Validated Villages (25 Pos / 15 Unlabeled)</dd></div>
+          <div class="prov-row"><dt>Rainfall Mode</dt><dd id="prov-rainfall-mode">In-Memory Multiplier</dd></div>
+        </dl>
+        <p class="governance-disclaimer" id="experimental-reading">
+          Baseline susceptibility is not real-time risk. Scenario-adjusted modeled risk uses simulated rainfall; current weather is contextual only. The weighted binary learner encodes unlabeled examples as class 0 for fitting and proxy metrics; these are not verified negatives or calibrated probabilities. Hydrology features are available to the model, but their current fitted split importance is zero.
+        </p>
+      </div>
+    </aside>
+
+    <!-- Traceable Evidence & Methodology Modal Dialog (6 Tabs) -->
+    <div id="evidence-modal" class="gmap-evidence-modal" style="display: none;" role="dialog" aria-modal="true" aria-label="Evidence & Methodology Vault">
+      <div class="modal-backdrop" id="modal-backdrop"></div>
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <div class="modal-header-titles">
+            <span class="badge-label">TRACEABLE DATA VAULT & AUDITS</span>
+            <h2 class="modal-title">Evidence Explorer & Scientific Governance</h2>
+          </div>
+          <button id="btn-close-evidence" class="modal-close-btn" aria-label="Close evidence vault" type="button">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <!-- Evidence and source-registry tabs -->
+        <div class="modal-tabs" role="tablist">
+          <button class="tab-btn active" data-target="tab-target" role="tab" aria-selected="true" type="button">Target Resolution</button>
+          <button class="tab-btn" data-target="tab-spatial" role="tab" aria-selected="false" type="button">Spatial Model</button>
+          <button class="tab-btn" data-target="tab-events" role="tab" aria-selected="false" type="button">GSI Inventory</button>
+          <button class="tab-btn" data-target="tab-rainfall" role="tab" aria-selected="false" type="button">IMD Rainfall</button>
+          <button class="tab-btn" data-target="tab-admin" role="tab" aria-selected="false" type="button">Administrative Boundary</button>
+          <button class="tab-btn" data-target="tab-methodology" role="tab" aria-selected="false" type="button">Scientific Governance</button>
+          <button class="tab-btn" data-target="tab-data-sources" role="tab" aria-selected="false" type="button">Data Sources</button>
+        </div>
+
+        <div class="modal-body-scroll">
+          <!-- Tab 1: Target Resolution -->
+          <div class="tab-pane active" id="tab-target" role="tabpanel">
+            <div class="pane-grid">
+              <div class="pane-side">
+                <div class="event-summary-box">
+                  <span class="badge-label">PU TARGET FORMULATION</span>
+                  <div class="summary-metric">
+                    <strong>40</strong>
+                    <span>Validated Village Universe</span>
+                  </div>
+                </div>
+                <div class="category-breakdown">
+                  <span class="control-label">Universe Partition</span>
+                  <dl class="stat-dl">
+                    <div><dt>Historical Positive</dt><dd>25 Villages (62.5%)</dd></div>
+                    <div><dt>Unlabeled</dt><dd>15 Villages (37.5%)</dd></div>
+                    <div><dt>Negative Assumptions</dt><dd>0 (Strict Zero-Imputation)</dd></div>
+                  </dl>
+                </div>
+                <p class="text-muted text-xs">Unlabeled villages lack confirmed GSI inventory records but are never treated as negative evidence.</p>
+              </div>
+              <div class="pane-main">
+                <h4 class="section-subheading">Positive-Unlabeled Target Formulation (Phase A1 Gate)</h4>
+                <p class="text-secondary text-sm">
+                  Because non-event dates in historical records cannot be proven to be true negative disaster absences (due to uninstrumented reporting), supervised binary classification would create synthetic bias. FloodGuard formulates spatial susceptibility under the defensible <strong>Positive-Unlabeled (PU) ML paradigm</strong>, learning relative susceptibility from validated positive inventory points without fabricating negative labels.
+                </p>
+                <div class="table-container compact-scroll" style="margin-top: 12px;">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Metric / Parameter</th>
+                        <th>Value</th>
+                        <th>Governance Rule</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Validated Polygon Universe</td>
+                        <td class="mono">40 Villages</td>
+                        <td>Exact containment against SOI KMZ boundaries</td>
+                      </tr>
+                      <tr>
+                        <td>Positive Label Count</td>
+                        <td class="mono">25 Villages</td>
+                        <td>At least 1 verified GSI landslide event</td>
+                      </tr>
+                      <tr>
+                        <td>Unlabeled Count</td>
+                        <td class="mono">15 Villages</td>
+                        <td>Zero recorded GSI events (UNLABELED ≠ NO RISK)</td>
+                      </tr>
+                      <tr>
+                        <td>Cross-Validation Scheme</td>
+                        <td class="mono">6-Fold LOTO</td>
+                        <td>Leave-One-Taluk-Out spatial group splitting</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 2: Spatial Model & Validation -->
+          <div class="tab-pane" id="tab-spatial" role="tabpanel">
+            <div class="pane-grid">
+              <div class="pane-side">
+                <div class="event-summary-box">
+                  <span class="badge-label">MODEL ARCHITECTURE</span>
+                  <div class="summary-metric">
+                    <strong>XGBoost</strong>
+                    <span>PU-weighted binary proxy</span>
+                  </div>
+                </div>
+                <div class="category-breakdown">
+                  <span class="control-label">Validation Metrics</span>
+                  <dl class="stat-dl">
+                    <div><dt>LOTO ROC-AUC*</dt><dd id="metric-loto-roc" class="mono">0.8573</dd></div>
+                    <div><dt>LOTO PR-AUC*</dt><dd id="metric-loto-pr" class="mono">0.9331</dd></div>
+                    <div><dt>LOTO Brier*</dt><dd id="metric-loto-brier" class="mono">0.1780</dd></div>
+                  </dl>
+                </div>
+              </div>
+              <div class="pane-main">
+                <h4 class="section-subheading">Leave-One-Taluk-Out (LOTO) spatial validation</h4>
+                <p class="text-secondary text-sm">
+                  Six explicit folds hold out one entire taluk per iteration. *These metrics score linked positives against unlabeled records encoded as class 0 by the weighted binary classifier; there are no verified negatives, so they are proxy metrics, not calibrated risk performance. Current weather is not a model input.
+                </p>
+                <p class="text-secondary text-sm" id="model-hydrology-coverage">
+                  Phase 3 hydrology joined by village LGD code for all 40 training villages. The full-fit XGBoost uses two hydrology features and at least one hydrology feature appears in five of six held-out fold models; no validation performance gain is claimed.
+                </p>
+                <div class="table-container compact-scroll" style="margin-top: 12px;">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Taluk Fold (Held Out)</th>
+                        <th>Villages in Fold</th>
+                        <th>Positive Cases</th>
+                        <th>Fold Evaluation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>Udhagai</td><td class="mono">12</td><td class="mono">8</td><td>Spatial generalization verified</td></tr>
+                      <tr><td>Coonoor</td><td class="mono">8</td><td class="mono">6</td><td>Spatial generalization verified</td></tr>
+                      <tr><td>Kotagiri</td><td class="mono">7</td><td class="mono">4</td><td>Spatial generalization verified</td></tr>
+                      <tr><td>Gudalur</td><td class="mono">5</td><td class="mono">3</td><td>Spatial generalization verified</td></tr>
+                      <tr><td>Pandalur</td><td class="mono">4</td><td class="mono">2</td><td>Spatial generalization verified</td></tr>
+                      <tr><td>Kundah</td><td class="mono">4</td><td class="mono">2</td><td>Spatial generalization verified</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 3: GSI Inventory -->
+          <div class="tab-pane" id="tab-events" role="tabpanel">
+            <div class="pane-grid">
+              <div class="pane-side">
+                <div class="event-summary-box">
+                  <span class="badge-label">GSI / NLFC REPOSITORY</span>
+                  <div class="summary-metric">
+                    <strong id="event-total">772</strong>
+                    <span>Verified Inventory Points</span>
+                  </div>
+                </div>
+                <div class="category-breakdown">
+                  <span class="control-label">Date Quality Audit</span>
+                  <dl id="event-dates" class="stat-dl"></dl>
+                </div>
+                <p class="text-muted text-xs">Records remain standalone spatial evidence points. CRS & non-event observation frames remain unmerged.</p>
+              </div>
+              <div class="pane-main">
+                <div class="table-container">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Location Description</th>
+                        <th>Historical Date / Year</th>
+                        <th>Material Type</th>
+                        <th>Movement Mechanism</th>
+                      </tr>
+                    </thead>
+                    <tbody id="events-table">
+                      <tr><td colspan="4" class="text-center">Loading GSI event inventory…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="table-caption">Independent inventory sample (top 15 displayed).</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 4: IMD Rainfall Series -->
+          <div class="tab-pane" id="tab-rainfall" role="tabpanel">
+            <div class="pane-grid">
+              <div class="pane-side">
+                <div class="control-stack">
+                  <label class="control-label" for="rain-year">Select IMD Archive Year</label>
+                  <select id="rain-year" class="form-select">
+                    <option>2017</option>
+                    <option>2019</option>
+                    <option>2022</option>
+                    <option>2023</option>
+                    <option selected>2024</option>
+                  </select>
+                </div>
+                <div class="control-stack">
+                  <label class="control-label" for="rain-place">Settlement Coordinate</label>
+                  <select id="rain-place" class="form-select"></select>
+                </div>
+                <div class="info-callout">
+                  <span class="callout-title">IMD Gridded NetCDF</span>
+                  <p id="rain-reading">Loading rainfall feature data…</p>
+                  <small class="text-muted">Zero imputation. Rolling nulls strictly retained.</small>
+                </div>
+              </div>
+              <div class="pane-main">
+                <div class="table-container">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Observation Date</th>
+                        <th>1-Day Rainfall (mm)</th>
+                        <th>3-Day Rolling (mm)</th>
+                        <th>7-Day Rolling (mm)</th>
+                      </tr>
+                    </thead>
+                    <tbody id="rain-table">
+                      <tr><td colspan="4" class="text-center">Loading daily rainfall records…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p id="rain-status" class="table-caption">Showing latest records for selected location.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 5: Administrative Boundary & Terrain -->
+          <div class="tab-pane" id="tab-admin" role="tabpanel">
+            <div class="pane-grid">
+              <div class="admin-column">
+                <h4 class="section-subheading">Administrative Framework (Village Master)</h4>
+                <p id="village-summary" class="text-muted text-xs">Loading administrative boundary status…</p>
+                <div class="table-container compact-scroll">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Village Name</th>
+                        <th>Taluk</th>
+                        <th>LGD Code</th>
+                      </tr>
+                    </thead>
+                    <tbody id="village-table">
+                      <tr><td colspan="3" class="text-center">Loading Village Master records…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="terrain-column">
+                <h4 class="section-subheading">SRTM 30m Digital Elevation Context</h4>
+                <div id="terrain-cards" class="terrain-cards-grid"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-pane" id="tab-data-sources" role="tabpanel">
+            <div class="pane-main">
+              <h4 class="section-subheading">Registered data sources</h4>
+              <p class="text-muted text-sm">Availability describes the project integration or local artifact, not guaranteed real-time service health. Partial coverage and DEMO data are identified in each source description.</p>
+              <div class="table-container">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Provider / dataset</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody id="data-sources-table">
+                    <tr><td colspan="5" class="text-center">Open this tab to load the source registry…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 6: Scientific Governance & Limitations -->
+          <div class="tab-pane" id="tab-methodology" role="tabpanel">
+            <div class="guardrails-grid">
+              <div class="guardrail-item">
+                <div class="guardrail-num">01</div>
+                <div class="guardrail-body">
+                  <strong>Evidence and unlabeled status</strong>
+                  <p>Strictly linked inventory evidence defines positive/unlabeled status. The current weighted binary learner encodes unlabeled observations as class 0; it does not make them verified negatives. Missing hydrology is not imputed.</p>
+                </div>
+              </div>
+              <div class="guardrail-item">
+                <div class="guardrail-num">02</div>
+                <div class="guardrail-body">
+                  <strong>40 Validated Village Universe</strong>
+                  <p>Modelling is strictly restricted to 40 validated LGD polygons with exact spatial containment (25 positive, 15 unlabeled). Unmatched areas are not interpolated.</p>
+                </div>
+              </div>
+              <div class="guardrail-item">
+                <div class="guardrail-num">03</div>
+                <div class="guardrail-body">
+                  <strong>Leave-One-Taluk-Out validation</strong>
+                  <p>Six explicit taluk holdout folds test spatial transfer. Reported metrics are positive-versus-unlabeled proxy values, not verification against known negatives or calibration.</p>
+                </div>
+              </div>
+              <div class="guardrail-item">
+                <div class="guardrail-num">04</div>
+                <div class="guardrail-body">
+                  <strong>Non-Destructive Scenario Engine</strong>
+                  <p>Rainfall scenarios evaluate in-memory feature perturbations while keeping raw data and SRTM terrain constant. Outputs are demonstration simulations, not live warnings.</p>
+                </div>
+              </div>
+            </div>
+            <div class="governance-footnote" id="model-reason">
+              Baseline susceptibility · terrain + hydrology + historical rainfall · 25 Positive · 15 Unlabeled · LOTO proxy metrics · UNLABELED ≠ NO RISK
+            </div>
+            <section class="warning-engine-audit" aria-labelledby="warning-audit-title">
+              <div class="warning-audit-header">
+                <div>
+                  <h3 id="warning-audit-title">Decision-support warning engine</h3>
+                  <p>Transparent, versioned rules evaluated separately from baseline model training.</p>
+                </div>
+                <span id="warning-audit-version" class="audit-version">Rule version loading</span>
+              </div>
+              <p id="warning-audit-updated" class="warning-audit-meta">Latest evaluation: loading</p>
+              <div class="warning-stage-grid">
+                <div><strong class="warning-text-green">GREEN · Normal</strong><span id="warning-audit-green">No configured watch signal.</span></div>
+                <div><strong class="warning-text-yellow">YELLOW · Watch</strong><span id="warning-audit-yellow">Loading rule…</span></div>
+                <div><strong class="warning-text-orange">ORANGE · Prepare</strong><span id="warning-audit-orange">Loading rule…</span></div>
+                <div><strong class="warning-text-red">RED · Warning</strong><span id="warning-audit-red">Loading rule…</span></div>
+              </div>
+              <div class="warning-audit-columns">
+                <div>
+                  <h4>Inputs and coverage</h4>
+                  <ul>
+                    <li>Baseline modeled susceptibility for the validated 40-village model population.</li>
+                    <li>Rainfall multipliers in scenario mode are simulated, never live observations.</li>
+                    <li>Validated current-rainfall ingestion is unavailable; current mode reports this as missing.</li>
+                    <li>Only online soil-moisture readings may support a stage; stale/offline readings are context only.</li>
+                    <li>Hydrology and historical-event linkage provide context, not current trigger evidence.</li>
+                    <li>Villages outside model coverage return unavailable; no village-name joins or numeric fills.</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4>Latest stage counts</h4>
+                  <p id="warning-audit-counts">Waiting for warning evaluation.</p>
+                  <p class="warning-audit-disclaimer">Provisional decision-support boundaries are not calibrated event probabilities or official warning thresholds. This system does not predict exact events or send alerts; follow government disaster-management guidance.</p>
+                </div>
+              </div>
+              <div class="warning-history-section">
+                <h4>Recent evaluation history</h4>
+                <p class="warning-audit-meta">Latest material stage/rule/input changes, recorded locally. Scenario evaluations are labeled and are not official alert events.</p>
+                <div class="warning-history-table-wrap">
+                  <table class="data-table warning-history-table">
+                    <thead>
+                      <tr>
+                        <th>Village LGD</th>
+                        <th>Stage</th>
+                        <th>Mode</th>
+                        <th>Rule</th>
+                        <th>Evaluated</th>
+                        <th>Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody id="warning-history-table">
+                      <tr><td colspan="6" class="text-center">Open this section to load recent history…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- External Libraries -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="/assets/js/dashboard.js"></script>
+</body>
+</html>
