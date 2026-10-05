@@ -42,6 +42,9 @@ data/raw/*
 !data/raw/dem/.gitkeep
 !data/raw/settlements/
 !data/raw/settlements/.gitkeep
+!data/raw/shelters/
+!data/raw/shelters/*.csv
+!data/raw/shelters/*.md
 
 # Large raw source files
 *.nc

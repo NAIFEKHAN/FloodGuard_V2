@@ -193,14 +193,26 @@ DATA_SOURCES: tuple[DataSource, ...] = (
     ),
     DataSource(
         id="demo_shelters",
-        name="Demonstration designated shelter locations",
+        name="Retired DEMO shelter placeholders",
         data_type=DataType.STATIC,
         provider="FloodGuard demonstration records",
-        dataset="DEMO_DESIGNATED_SHELTERS in frontend/js/dashboard.js",
-        description="Ten explicitly labelled DEMO shelter representations; not verified operational shelter records.",
+        dataset="Legacy frontend-only DEMO records; excluded from shelter API, map and routing",
+        description="Ten synthetic placeholders were removed from operational UI/routing. They were never verified facilities and are not part of the shelter inventory.",
         unit="coordinates: WGS 84 decimal degrees; capacity: persons",
-        refresh_type="static demonstration data",
-        artifacts=(ROOT / "frontend/js/dashboard.js",),
+        refresh_type="retired",
+        planned=True,
+        artifacts=(ROOT / "docs/shelter-validation.md",),
+    ),
+    DataSource(
+        id="shelters",
+        name="Nilgiris shelter inventory",
+        data_type=DataType.STATIC,
+        provider=None,
+        dataset="Source-verified facilities ingested from data/raw/shelters/shelters.csv",
+        description="No authoritative shelter records are currently available. Facilities require a cited source, verified location, and verification date before route eligibility.",
+        unit="coordinates: WGS 84 decimal degrees",
+        refresh_type="manual, source-cited ingestion",
+        artifacts=(DATA / "raw/shelters/shelters.csv",),
     ),
     DataSource(
         id="hydrology",
@@ -300,6 +312,14 @@ def source_status(source: DataSource) -> Availability:
             Availability.AVAILABLE
             if has_registered_sensors()
             else Availability.PLANNED
+        )
+    if source.id == "shelters":
+        from backend.app.shelter_service import shelter_coverage
+
+        return (
+            Availability.AVAILABLE
+            if shelter_coverage()["route_eligible_records"] > 0
+            else Availability.UNAVAILABLE
         )
     if source.artifacts and all(path.is_file() for path in source.artifacts):
         return Availability.AVAILABLE
