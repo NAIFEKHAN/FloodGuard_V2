@@ -5774,15 +5774,31 @@ html, body {
 }
 
 .gmap-layers-popup {
-  height: min(72vh, 520px);
-  max-height: calc(100vh - var(--navbar-height) - 20px);
+  position: absolute;
+  top: auto;
+  right: 54px;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(286px, calc(100vw - 28px));
+  height: auto;
+  max-height: calc(50vh - 16px);
+  max-height: calc(50dvh - 16px);
+  min-height: 0;
+  box-sizing: border-box;
+  gap: 10px;
   overflow: hidden;
+}
+
+.layers-popup-title {
+  flex: 0 0 auto;
+  line-height: 1.3;
 }
 
 .layers-basemap-section {
   display: grid;
   flex: 0 0 auto;
-  gap: 5px;
+  gap: 2px;
 }
 
 .layers-section-heading {
@@ -5791,24 +5807,19 @@ html, body {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
+  line-height: 1.3;
 }
 
 .basemap-choice {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 28px;
+  min-height: 30px;
   color: #334155;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.35;
   cursor: pointer;
-}
-
-.basemap-choice input {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  accent-color: #2563eb;
 }
 
 .layers-section-divider {
@@ -5819,6 +5830,7 @@ html, body {
 
 .layers-overlays-heading {
   flex: 0 0 auto;
+  margin-bottom: -4px;
 }
 
 .layers-overlay-list {
@@ -5827,8 +5839,66 @@ html, body {
   flex-direction: column;
   gap: 4px;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+  padding-right: 4px;
+}
+
+.layers-overlay-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.layers-overlay-list::-webkit-scrollbar-track {
+  border-radius: 6px;
+  background: #f1f5f9;
+}
+
+.layers-overlay-list::-webkit-scrollbar-thumb {
+  border: 1px solid #f1f5f9;
+  border-radius: 6px;
+  background: #94a3b8;
+}
+
+.layers-overlay-list .custom-toggle {
+  align-items: flex-start;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-height: 30px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.layers-overlay-list .custom-toggle input {
+  flex: 0 0 16px;
+  margin: 1px 0 0;
+}
+
+.layers-overlay-list .toggle-indicator {
+  flex: 0 0 auto;
+}
+
+.layers-overlay-list .toggle-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.basemap-choice span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.basemap-choice input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: #2563eb;
 }
 
 .warning-audit-refresh-row {
@@ -5868,7 +5938,22 @@ html, body {
 
 @media (max-width: 600px) {
   .gmap-layers-popup {
-    height: min(72vh, 520px);
+    top: auto;
+    right: 54px;
+    width: min(286px, calc(100vw - 16px));
+    max-height: calc(50vh - 12px);
+    max-height: calc(50dvh - 12px);
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .layers-overlay-list {
+    padding-right: 3px;
+  }
+
+  .layers-overlay-list .custom-toggle {
+    gap: 7px;
+    font-size: 11px;
   }
 
   .warning-audit-refresh-row {
