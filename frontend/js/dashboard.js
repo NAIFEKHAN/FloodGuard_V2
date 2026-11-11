@@ -6,6 +6,8 @@
 (() => {
   "use strict";
 
+  const { sortVillageRecords } = window.FloodGuardRanking;
+
   // DOM Helpers
   const $ = id => document.getElementById(id);
   const escapeHtml = val => {
@@ -230,6 +232,7 @@
   let selectedVillageLgd = null;
   let currentTierFilter = "all";
   let currentSearchTerm = "";
+  let currentRankingSort = "score-desc";
   let sliderDebounceTimer = null;
   let activeHighlightedPolygon = null;
   let villageContextRequestId = 0;
@@ -2288,6 +2291,23 @@
     const evidenceSummary = evidence.status === "available"
       ? `${evidence.count || 0} conditional exact-polygon link(s)${evidenceIds.length ? ` · IDs ${evidenceIds.join(", ")}` : ""}`
       : "Unavailable";
+    const evidenceMetric = $("comp-events");
+    const evidenceMetricNote = $("comp-events-raw");
+    const evidenceDescription = $("detail-gsi-desc");
+    if (evidence.status === "available") {
+      const evidenceCount = Number(evidence.count);
+      if (evidenceMetric) {
+        evidenceMetric.textContent = Number.isFinite(evidenceCount)
+          ? `${evidenceCount} linked record${evidenceCount === 1 ? "" : "s"}`
+          : "Linked evidence available";
+      }
+      if (evidenceMetricNote) evidenceMetricNote.textContent = "Conditional exact-polygon inventory links; not model inputs";
+      if (evidenceDescription) evidenceDescription.textContent = evidenceSummary;
+    } else {
+      if (evidenceMetric) evidenceMetric.textContent = "Unavailable";
+      if (evidenceMetricNote) evidenceMetricNote.textContent = evidence.limitations || "Historical linkage unavailable";
+      if (evidenceDescription) evidenceDescription.textContent = "Historical inventory evidence is unavailable for this village.";
+    }
     const rainfallSummary = historical
       ? `${historical.date} · 1d ${fmt(historical.rainfall_1d_mm, 1)} mm · 3d ${fmt(historical.rainfall_3d_mm, 1)} mm · 7d ${fmt(historical.rainfall_7d_mm, 1)} mm`
       : "Unavailable for this village";
@@ -2558,21 +2578,28 @@
     if (compRainRaw) compRainRaw.textContent = `Base P95: ${fmt(baseRain7d, 1)}mm`;
 
     const compEvents = $("comp-events");
+    const linkedEventCount = Number(record.conditional_strict_linked_event_count);
     if (compEvents) {
-      compEvents.textContent = record.pu_status === "POSITIVE" ? "1 Verified Match" : "UNLABELED";
+      compEvents.textContent = record.pu_status === "POSITIVE"
+        ? Number.isFinite(linkedEventCount)
+          ? `${linkedEventCount} linked record${linkedEventCount === 1 ? "" : "s"}`
+          : "Linked evidence available"
+        : "No linked record";
     }
     const compEventsRaw = $("comp-events-raw");
     if (compEventsRaw) {
       compEventsRaw.textContent = record.pu_status === "POSITIVE" 
-        ? "GSI Strict Containment" 
-        : "No recorded GSI inventory evidence";
+        ? "Historical inventory evidence; spatial linkage is conditional"
+        : "Unlabeled: no linked inventory record is not proof of no event";
     }
 
     const compRain1d = $("comp-rain-1d");
     if (compRain1d) {
       const factor = activeScenarioMeta?.rainfall_factor ?? 1.0;
-      const base1d = Number(record.rainfall_1d_max_mm || 180.0);
-      compRain1d.textContent = `${fmt(base1d * factor, 1)} mm`;
+      const base1d = Number(record.rainfall_1d_max_mm);
+      compRain1d.textContent = Number.isFinite(base1d)
+        ? `${fmt(base1d * factor, 1)} mm`
+        : "Unavailable";
     }
     const compRain1dRaw = $("comp-rain-1d-raw");
     if (compRain1dRaw) compRain1dRaw.textContent = "Simulated 1D Peak";
@@ -2581,8 +2608,8 @@
     const gsiDescEl = $("detail-gsi-desc");
     if (gsiDescEl) {
       gsiDescEl.textContent = record.pu_status === "POSITIVE"
-        ? "Historical landslide inventory event matched"
-        : "UNLABELED (Absence of recorded inventory evidence)";
+        ? `${Number.isFinite(linkedEventCount) ? linkedEventCount : "Recorded"} historical inventory record(s) linked conditionally`
+        : "Unlabeled: no linked inventory record is not proof that no landslide occurred";
     }
 
     // Provenance
@@ -2700,7 +2727,6 @@
     const listEl = $("index-ranking");
     if (!listEl) return;
     const rankingCount = $("ranking-count");
-    if (rankingCount) rankingCount.textContent = String(scenarioRecords.length);
 
     let filtered = [...scenarioRecords];
 
@@ -2723,6 +2749,9 @@
       );
     }
 
+    filtered = sortVillageRecords(filtered, currentRankingSort);
+    if (rankingCount) rankingCount.textContent = String(filtered.length);
+
     if (!filtered.length) {
       listEl.innerHTML = `
         <div class="empty-results-box">
@@ -2741,7 +2770,7 @@
       const isActive = String(row.village_lgd_code) === String(selectedVillageLgd) ? "active" : "";
       
       // Rank in full scenario dataset
-      const rank = scenarioRecords.findIndex(r => String(r.village_lgd_code) === String(row.village_lgd_code)) + 1;
+      const rank = filtered.findIndex(r => String(r.village_lgd_code) === String(row.village_lgd_code)) + 1;
 
       const statusChip = warnState.warning?.status === "available"
         ? `<span class="tier-chip warning-stage-chip warning-${escapeHtml(warnState.stage)}" title="Decision-support warning stage">${escapeHtml(warnState.stage.toUpperCase())} · ${escapeHtml(String(warnState.warning.label).toUpperCase())}</span>`
@@ -3081,6 +3110,13 @@
    * Setup UI Controls & Interactive Listeners
    */
   function setupUIListeners() {
+    const navToolsMenu = $("nav-tools-menu");
+    if (navToolsMenu) {
+      navToolsMenu.querySelectorAll("button, a").forEach(control => {
+        control.addEventListener("click", () => { navToolsMenu.open = false; });
+      });
+    }
+
     const warningRetry = $("warning-retry-btn");
     if (warningRetry) {
       warningRetry.onclick = async () => {
@@ -3137,6 +3173,15 @@
           renderRankingList();
           searchInput.focus();
         }
+      };
+    }
+
+    const rankingSort = $("ranking-sort");
+    if (rankingSort) {
+      rankingSort.value = currentRankingSort;
+      rankingSort.onchange = event => {
+        currentRankingSort = event.target.value;
+        renderRankingList();
       };
     }
 

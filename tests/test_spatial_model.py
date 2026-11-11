@@ -7,7 +7,11 @@ import pytest
 from xgboost import XGBClassifier
 
 from pipeline.spatial_features import HYDROLOGY_FEATURES, MODEL_FEATURES
-from pipeline.train_spatial_model import build_spatial_dataset, join_hydrology_features
+from pipeline.train_spatial_model import (
+    build_spatial_dataset,
+    join_hydrology_features,
+    train_and_evaluate_spatial_models,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_PROCESSED = ROOT / "data/processed"
@@ -99,6 +103,22 @@ def test_training_dataset_has_complete_exact_id_hydrology_coverage() -> None:
     assert dataset.attrs["hydrology_join"]["matched_count"] == 40
     assert dataset.attrs["hydrology_join"]["unmatched_model_count"] == 0
     assert not dataset[list(MODEL_FEATURES)].isna().any().any()
+
+
+def test_loto_evaluation_reports_baseline_threshold_and_fold_metrics() -> None:
+    result = train_and_evaluate_spatial_models(build_spatial_dataset())
+
+    assert "prior_baseline" in result["metrics"]
+    xgboost = result["metrics"]["pu_xgboost"]
+    assert 0 <= xgboost["loto_precision_at_0_5"] <= 1
+    assert 0 <= xgboost["loto_recall_at_0_5"] <= 1
+    assert 0 <= xgboost["loto_f1_at_0_5"] <= 1
+    assert sum(xgboost["loto_confusion_matrix_at_0_5"].values()) == 40
+    assert xgboost["calibration_status"].startswith("not_calibrated")
+    assert set(xgboost["fold_metrics"]) == {
+        "Coonoor", "Gudalur", "Kotagiri", "Kundah", "Pandalur", "Udhagai"
+    }
+    assert xgboost["fold_metrics"]["Coonoor"]["roc_auc"] is None
 
 
 def test_spatial_validation_metrics_exist_and_meet_thresholds() -> None:

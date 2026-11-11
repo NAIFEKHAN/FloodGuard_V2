@@ -12,8 +12,15 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.dummy import DummyClassifier
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import roc_auc_score, average_precision_score, brier_score_loss
+from sklearn.metrics import (
+    roc_auc_score,
+    average_precision_score,
+    brier_score_loss,
+    confusion_matrix,
+    precision_recall_fscore_support,
+)
 from xgboost import XGBClassifier
 
 from pipeline.run_rainfall_scenario import classify_scenario_tier
@@ -253,6 +260,10 @@ def train_and_evaluate_spatial_models(df: pd.DataFrame) -> dict[str, object]:
     y_true = df["label_s"].values
 
     models = {
+        "prior_baseline": {
+            "name": "Training-fold prior baseline",
+            "oof_preds": np.zeros(len(df)),
+        },
         "pu_logistic_regression": {
             "name": "PU-Weighted Logistic Regression",
             "oof_preds": np.zeros(len(df)),
@@ -268,6 +279,9 @@ def train_and_evaluate_spatial_models(df: pd.DataFrame) -> dict[str, object]:
     }
 
     fold_details = []
+    fold_predictions: dict[str, dict[str, tuple[np.ndarray, np.ndarray]]] = {
+        key: {} for key in models
+    }
 
     for fold_idx, holdout_taluk in enumerate(taluks, 1):
         train_mask = (df["taluk_name_en"] != holdout_taluk).values
@@ -284,6 +298,13 @@ def train_and_evaluate_spatial_models(df: pd.DataFrame) -> dict[str, object]:
         w_unl = float(n_pos / max(n_unl, 1))
         sample_weights = np.where(y_train == 1, 1.0, w_unl)
 
+        # A no-feature training-fold prior provides a transparent baseline.
+        m_prior = DummyClassifier(strategy="prior")
+        m_prior.fit(np.zeros((len(y_train), 1)), y_train)
+        prior_predictions = m_prior.predict_proba(np.zeros((len(y_test), 1)))[:, 1]
+        models["prior_baseline"]["oof_preds"][test_mask] = prior_predictions
+        fold_predictions["prior_baseline"][holdout_taluk] = (y_test.copy(), prior_predictions.copy())
+
         # Standardize features for linear model
         scaler = StandardScaler()
         X_train_s = scaler.fit_transform(X_train)
@@ -293,11 +314,17 @@ def train_and_evaluate_spatial_models(df: pd.DataFrame) -> dict[str, object]:
         m_lr = LogisticRegression(C=0.5, random_state=42, max_iter=200)
         m_lr.fit(X_train_s, y_train, sample_weight=sample_weights)
         models["pu_logistic_regression"]["oof_preds"][test_mask] = m_lr.predict_proba(X_test_s)[:, 1]
+        fold_predictions["pu_logistic_regression"][holdout_taluk] = (
+            y_test.copy(), models["pu_logistic_regression"]["oof_preds"][test_mask].copy()
+        )
 
         # 2. PU Random Forest
         m_rf = RandomForestClassifier(n_estimators=50, max_depth=2, random_state=42)
         m_rf.fit(X_train, y_train, sample_weight=sample_weights)
         models["pu_random_forest"]["oof_preds"][test_mask] = m_rf.predict_proba(X_test)[:, 1]
+        fold_predictions["pu_random_forest"][holdout_taluk] = (
+            y_test.copy(), models["pu_random_forest"]["oof_preds"][test_mask].copy()
+        )
 
         # 3. PU XGBoost
         m_xgb = XGBClassifier(
@@ -310,6 +337,9 @@ def train_and_evaluate_spatial_models(df: pd.DataFrame) -> dict[str, object]:
         )
         m_xgb.fit(X_train, y_train, sample_weight=sample_weights)
         models["pu_xgboost"]["oof_preds"][test_mask] = m_xgb.predict_proba(X_test)[:, 1]
+        fold_predictions["pu_xgboost"][holdout_taluk] = (
+            y_test.copy(), models["pu_xgboost"]["oof_preds"][test_mask].copy()
+        )
         fold_xgb_importance = m_xgb.get_booster().get_score(importance_type="weight")
         fold_hydrology_features = [
             feature
@@ -333,15 +363,57 @@ def train_and_evaluate_spatial_models(df: pd.DataFrame) -> dict[str, object]:
     metrics = {}
     for m_key, m_info in models.items():
         preds = m_info["oof_preds"]
-        roc_auc = float(roc_auc_score(y_true, preds))
+        roc_auc = float(roc_auc_score(y_true, preds)) if len(np.unique(y_true)) == 2 else None
         pr_auc = float(average_precision_score(y_true, preds))
         brier = float(brier_score_loss(y_true, preds))
+        binary = (preds >= 0.5).astype(int)
+        precision, recall, f1, _ = precision_recall_fscore_support(
+            y_true, binary, average="binary", zero_division=0
+        )
+        tn, fp, fn, tp = confusion_matrix(y_true, binary, labels=[0, 1]).ravel()
+        fold_metrics = {}
+        for holdout, (fold_y, fold_preds) in fold_predictions[m_key].items():
+            fold_binary = (fold_preds >= 0.5).astype(int)
+            fold_precision, fold_recall, fold_f1, _ = precision_recall_fscore_support(
+                fold_y, fold_binary, average="binary", zero_division=0
+            )
+            fold_cm = confusion_matrix(fold_y, fold_binary, labels=[0, 1]).ravel()
+            fold_roc = (
+                float(roc_auc_score(fold_y, fold_preds))
+                if len(np.unique(fold_y)) == 2
+                else None
+            )
+            fold_metrics[holdout] = {
+                "roc_auc": round(fold_roc, 4) if fold_roc is not None else None,
+                "pr_auc": (
+                    round(float(average_precision_score(fold_y, fold_preds)), 4)
+                    if np.any(fold_y == 1)
+                    else None
+                ),
+                "precision_at_0_5": round(float(fold_precision), 4),
+                "recall_at_0_5": round(float(fold_recall), 4),
+                "f1_at_0_5": round(float(fold_f1), 4),
+                "confusion_matrix_at_0_5": {
+                    "tn": int(fold_cm[0]),
+                    "fp": int(fold_cm[1]),
+                    "fn": int(fold_cm[2]),
+                    "tp": int(fold_cm[3]),
+                },
+            }
 
         metrics[m_key] = {
             "model_name": m_info["name"],
-            "loto_roc_auc": round(roc_auc, 4),
+            "loto_roc_auc": round(roc_auc, 4) if roc_auc is not None else None,
             "loto_pr_auc": round(pr_auc, 4),
             "loto_brier_score": round(brier, 4),
+            "loto_precision_at_0_5": round(float(precision), 4),
+            "loto_recall_at_0_5": round(float(recall), 4),
+            "loto_f1_at_0_5": round(float(f1), 4),
+            "loto_confusion_matrix_at_0_5": {
+                "tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)
+            },
+            "fold_metrics": fold_metrics,
+            "calibration_status": "not_calibrated; scores are PU proxy outputs",
         }
 
     # Train Final Production Model on all 40 villages

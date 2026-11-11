@@ -935,6 +935,57 @@ html, body {
   gap: 6px;
 }
 
+.nav-tools-menu {
+  position: relative;
+}
+
+.nav-tools-menu > summary {
+  display: inline-flex;
+  min-height: var(--control-height);
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.nav-tools-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.nav-tools-menu > summary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand-primary) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.nav-tools-content {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1300;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 7px;
+  min-width: 310px;
+  padding: 10px;
+  border: var(--panel-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.99);
+  box-shadow: var(--panel-shadow);
+}
+
+.nav-tools-content .nav-action-btn {
+  min-width: 0;
+  justify-content: flex-start !important;
+  gap: 7px;
+}
+
 .weather-badge {
   font-size: 9.5px;
   font-weight: 800;
@@ -4428,6 +4479,25 @@ html, body {
     display: flex;
   }
 
+  .nav-tools-menu {
+    grid-column: 1 / -1;
+  }
+
+  .nav-tools-menu > summary {
+    width: 100%;
+    min-height: 38px;
+    justify-content: center;
+  }
+
+  .nav-tools-content {
+    top: calc(100% + 8px);
+    right: 0;
+    left: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+    width: 100%;
+  }
+
   .navbar-actions-group .nav-action-btn {
     width: 100%;
     justify-content: flex-start;
@@ -5549,12 +5619,6 @@ html, body {
     padding-inline: 8px;
   }
 
-  .navbar-actions-group .btn-weather-trigger > span:last-child,
-  .navbar-actions-group .btn-shelter-trigger > span:last-child,
-  .navbar-actions-group .btn-evidence-trigger > span:last-child {
-    display: none;
-  }
-
   .gmap-village-panel {
     width: 320px;
     max-width: min(320px, calc(100vw - 24px));
@@ -6067,4 +6131,33 @@ html, body {
     font-weight: 700;
     text-align: right;
     overflow-wrap: anywhere;
+  }
+
+  .ranking-sort-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 9px 0 2px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .ranking-sort-control select {
+    min-width: 0;
+    max-width: 66%;
+    min-height: 36px;
+    padding: 6px 28px 6px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    background: var(--surface, #fff);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 11px;
+  }
+
+  .ranking-sort-control select:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--brand-primary) 35%, transparent);
+    outline-offset: 2px;
   }
