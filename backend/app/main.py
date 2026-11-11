@@ -13,6 +13,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from shapely.geometry import mapping
 
 from backend.app.sensor_api import MAX_SENSOR_REQUEST_BYTES, router as sensor_router
 from backend.app.shelter_api import router as shelter_router
@@ -23,6 +24,7 @@ from backend.app.data_catalog import (
     source_provenance,
 )
 from backend.app.hydrology import get_hydrology_map_data, get_village_hydrology
+from backend.app.shelter_service import village_geometries
 from backend.app.village_context import get_village_context
 from pipeline.spatial_features import FEATURE_GROUPS, HYDROLOGY_FEATURES
 
@@ -117,6 +119,39 @@ def health_check() -> dict[str, str]:
 def get_villages(limit: int = Query(default=102, ge=1, le=102)) -> dict[str, object]:
     rows = villages()
     return {"classification": "REAL_ADMINISTRATIVE_RECORDS_NOT_MODELLING_UNITS", "record_count": len(rows), "exact_spatial_matches": 40, "village_master_only": 62, "kmz_only": 18, "records": rows[:limit]}
+
+
+@app.get("/api/village-boundaries")
+def get_village_boundaries() -> dict[str, object]:
+    """Return only existing boundary geometries validated by exact village LGD code."""
+    village_by_code = {
+        row["village_lgd_code"]: row for row in villages()
+        if row.get("village_lgd_code")
+    }
+    supported_codes = {
+        row["village_lgd_code"]
+        for row in read_csv(DATA / "processed/ml_village_susceptibility_scores.csv")
+    }
+    features = []
+    for code, geometry in sorted(village_geometries().items()):
+        village = village_by_code.get(code)
+        if code not in supported_codes or village is None:
+            continue
+        features.append({
+            "type": "Feature",
+            "geometry": mapping(geometry),
+            "properties": {
+                "village_lgd_code": code,
+                "village_name_en": village["village_name_en"],
+                "taluk_name_en": village["taluk_name_en"],
+            },
+        })
+    return {
+        "type": "FeatureCollection",
+        "classification": "EXACT_LGD_VALIDATED_VILLAGE_BOUNDARIES",
+        "feature_count": len(features),
+        "features": features,
+    }
 
 
 @app.get("/api/data-sources")

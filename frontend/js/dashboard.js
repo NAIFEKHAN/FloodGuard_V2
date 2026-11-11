@@ -228,6 +228,7 @@
   let scenarioRecords = [];
   let activeScenarioMeta = null;
   let villagePolygonsMap = new Map();
+  let villageBoundaryLinesMap = new Map();
   let shelterMarkersMap = new Map();
   let selectedVillageLgd = null;
   let currentTierFilter = "all";
@@ -1161,7 +1162,8 @@
     };
 
     susceptibilityLayer = L.layerGroup().addTo(map);
-    boundaryLayer = L.layerGroup().addTo(map);
+    boundaryLayer = L.layerGroup();
+    if ($("toggle-boundaries")?.checked) boundaryLayer.addTo(map);
     centroidLayer = L.layerGroup().addTo(map);
     eventLayer = L.layerGroup().addTo(map);
     shelterLayer = L.layerGroup().addTo(map);
@@ -2158,10 +2160,20 @@
       const oldScore = activeHighlightedPolygon._floodguardScore || 0;
       const oldTier = getTierInfo(oldScore);
       activeHighlightedPolygon.setStyle({
-        color: oldTier.stroke,
-        weight: 1.5,
+        stroke: false,
         fillOpacity: oldTier.fillOpacity
       });
+      const oldCode = activeHighlightedPolygon._floodguardCode;
+      const oldBoundary = villageBoundaryLinesMap.get(String(oldCode));
+      const oldVillage = scenarioRecords.find(v => String(v.village_lgd_code) === String(oldCode));
+      if (oldBoundary && oldVillage) {
+        const oldWarning = getVillageWarningState(oldVillage);
+        const warningColors = { green: "#16a34a", yellow: "#eab308", orange: "#f97316", red: "#dc2626" };
+        oldBoundary.setStyle({
+          color: warningMapEnabled ? (warningColors[oldWarning.stage] || "#64748b") : oldTier.stroke,
+          weight: warningMapEnabled ? 2.5 : 2
+        });
+      }
       if (activeHighlightedPolygon._path) {
         L.DomUtil.removeClass(activeHighlightedPolygon._path, "polygon-selected");
       }
@@ -2170,10 +2182,14 @@
     if (polygon) {
       polygon._floodguardScore = score;
       polygon.setStyle({
-        color: "#0284c7",
-        weight: 3.5,
+        stroke: false,
         fillOpacity: 0.45
       });
+      const boundary = villageBoundaryLinesMap.get(String(polygon._floodguardCode));
+      if (boundary) {
+        boundary.setStyle({ color: "#166534", weight: 3.5 });
+        boundary.bringToFront();
+      }
       if (polygon._path) {
         L.DomUtil.addClass(polygon._path, "polygon-selected");
       }
@@ -2841,16 +2857,17 @@
         const weight = warningMapEnabled ? 2 : 1.5;
 
         // If not actively highlighted, apply tier/warning stroke
-        if (polygon !== activeHighlightedPolygon) {
-          polygon.setStyle({
-            color: strokeColor,
-            weight: weight,
-            fillColor: fillColor,
-            fillOpacity: fillOpacity
-          });
-        } else {
-          polygon.setStyle({
-            fillColor: fillColor
+        polygon.setStyle({
+          stroke: false,
+          fillColor: fillColor,
+          fillOpacity: polygon === activeHighlightedPolygon ? 0.45 : fillOpacity
+        });
+        const boundary = villageBoundaryLinesMap.get(lgdStr);
+        if (boundary) {
+          boundary.setStyle({
+            color: polygon === activeHighlightedPolygon ? "#166534" : strokeColor,
+            weight: polygon === activeHighlightedPolygon ? 3.5 : weight,
+            fill: false
           });
         }
 
@@ -3009,106 +3026,84 @@
     }
   }
 
-  /**
-   * Parse and Render Survey of India KMZ Administrative Boundaries
-   */
+  /** Render only source polygons reconciled to supported villages by exact LGD code. */
   async function loadBoundaries() {
     try {
-      const res = await fetch("/data/raw/admin/vb_soi_tn.kmz");
-      if (!res.ok) throw new Error(`KMZ fetch HTTP ${res.status}`);
+      const data = await api("/api/village-boundaries");
+      if (!Array.isArray(data.features) || data.feature_count !== data.features.length) {
+        throw new Error("Validated village boundary response is incomplete");
+      }
 
-      const zip = await JSZip.loadAsync(await res.arrayBuffer());
-      const kmlFile = Object.values(zip.files).find(f => /\.kml$/i.test(f.name));
-      if (!kmlFile) throw new Error("No KML found in KMZ archive");
+      const recordsByCode = new Map(
+        scenarioRecords.map(village => [String(village.village_lgd_code), village])
+      );
+      villagePolygonsMap.clear();
+      villageBoundaryLinesMap.clear();
 
-      const xmlText = await kmlFile.async("text");
-      const xmlDoc = new DOMParser().parseFromString(xmlText, "application/xml");
-      const placemarks = [...xmlDoc.querySelectorAll("Placemark")].filter(p => /nilgiri/i.test(p.textContent));
+      for (const feature of data.features) {
+        const code = String(feature.properties?.village_lgd_code || "");
+        const village = recordsByCode.get(code);
+        if (!village || !feature.geometry) continue;
 
-      placemarks.forEach(placemark => {
-        const text = placemark.textContent || "";
-        let matchedVillage = null;
-        for (const v of scenarioRecords) {
-          if (v.village_name_en && text.toLowerCase().includes(v.village_name_en.toLowerCase())) {
-            matchedVillage = v;
-            break;
-          }
-        }
-
-        placemark.querySelectorAll("Polygon outerBoundaryIs LinearRing coordinates").forEach(coordNode => {
-          const rawCoords = coordNode.textContent.trim().split(/\s+/);
-          const latLngs = rawCoords
-            .map(c => c.split(",").map(Number))
-            .filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1]))
-            .map(c => [c[1], c[0]]);
-
-          if (latLngs.length > 2) {
-            let fillColor = "#0284c7";
-            let fillOpacity = 0.18;
-            let strokeColor = "#0ea5e9";
-
-            if (matchedVillage) {
-              const score = Number(matchedVillage.scenario_susceptibility_0_100 ?? matchedVillage.ml_susceptibility_0_100);
-              const tier = getTierInfo(score);
-              fillColor = tier.color;
-              strokeColor = tier.stroke;
-              fillOpacity = tier.fillOpacity;
-            }
-
-            const polygon = L.polygon(latLngs, {
-              color: strokeColor,
-              weight: 1.5,
-              fillColor: fillColor,
-              fillOpacity: fillOpacity
-            });
-
-            if (matchedVillage) {
-              polygon._floodguardScore = Number(matchedVillage.scenario_susceptibility_0_100 ?? matchedVillage.ml_susceptibility_0_100);
-              villagePolygonsMap.set(String(matchedVillage.village_lgd_code), polygon);
-              const score = fmt(matchedVillage.scenario_susceptibility_0_100 ?? matchedVillage.ml_susceptibility_0_100, 1);
-              
-              polygon.bindTooltip(`
-                <strong>${escapeHtml(matchedVillage.village_name_en)}</strong> · Scenario risk ${score} / 100
-              `, { sticky: true, className: "polygon-tooltip" });
-
-              polygon.bindPopup(`
-                <div style="font-size:12px;">
-                  <strong style="color:#0284c7;font-size:13px;">${escapeHtml(matchedVillage.village_name_en)}</strong><br>
-                  <strong>LGD Code:</strong> ${escapeHtml(matchedVillage.village_lgd_code)}<br>
-                  <strong>Baseline modeled susceptibility:</strong> ${fmt(matchedVillage.baseline_susceptibility_0_100 ?? matchedVillage.ml_susceptibility_0_100, 1)} / 100<br>
-                  <strong>Scenario-adjusted modeled risk:</strong> ${score} / 100<br>
-                  <strong>Mean Slope:</strong> ${fmt(matchedVillage.slope_mean_deg, 1)}°<br>
-                  <small style="color:#0284c7;font-weight:600;">Click for full village details</small>
-                </div>
-              `);
-              polygon.on("click", () => renderVillageDetail(matchedVillage));
-
-              // Add center circle marker for centroid layer
-              const center = polygon.getBounds().getCenter();
-              const marker = L.circleMarker(center, {
-                radius: 4,
-                color: "#ffffff",
-                weight: 1.5,
-                fillColor: "#0284c7",
-                fillOpacity: 0.9
-              });
-              marker.bindTooltip(`<strong>${escapeHtml(matchedVillage.village_name_en)}</strong>`);
-              marker.on("click", () => renderVillageDetail(matchedVillage));
-              marker.addTo(centroidLayer);
-            }
-
-            polygon.addTo(susceptibilityLayer);
+        const score = Number(village.scenario_susceptibility_0_100 ?? village.ml_susceptibility_0_100);
+        const tier = getTierInfo(score);
+        const polygon = L.geoJSON(feature, {
+          style: {
+            stroke: false,
+            color: tier.stroke,
+            fillColor: tier.color,
+            fillOpacity: tier.fillOpacity
           }
         });
-      });
+        polygon._floodguardCode = code;
+        polygon._floodguardScore = score;
+        villagePolygonsMap.set(code, polygon);
+
+        const boundary = L.geoJSON(feature, {
+          interactive: false,
+          style: { color: tier.stroke, weight: 2.2, fill: false }
+        });
+        villageBoundaryLinesMap.set(code, boundary);
+        boundary.addTo(boundaryLayer);
+
+        polygon.bindTooltip(`
+          <strong>${escapeHtml(village.village_name_en)}</strong> - Scenario risk ${fmt(score, 1)} / 100
+        `, { sticky: true, className: "polygon-tooltip" });
+        polygon.bindPopup(`
+          <div style="font-size:12px;">
+            <strong style="color:#14532d;font-size:13px;">${escapeHtml(village.village_name_en)}</strong><br>
+            <strong>LGD Code:</strong> ${escapeHtml(village.village_lgd_code)}<br>
+            <strong>Baseline modeled susceptibility:</strong> ${fmt(village.baseline_susceptibility_0_100 ?? village.ml_susceptibility_0_100, 1)} / 100<br>
+            <strong>Scenario-adjusted modeled risk:</strong> ${fmt(score, 1)} / 100<br>
+            <strong>Mean Slope:</strong> ${fmt(village.slope_mean_deg, 1)} deg<br>
+            <small style="color:#166534;font-weight:600;">Click for full village details</small>
+          </div>
+        `);
+        polygon.on("click", () => renderVillageDetail(village));
+        polygon.addTo(susceptibilityLayer);
+
+        const center = polygon.getBounds().getCenter();
+        const marker = L.circleMarker(center, {
+          radius: 4,
+          color: "#ffffff",
+          weight: 1.5,
+          fillColor: "#0284c7",
+          fillOpacity: 0.9
+        });
+        marker.bindTooltip(`<strong>${escapeHtml(village.village_name_en)}</strong>`);
+        marker.on("click", () => renderVillageDetail(village));
+        marker.addTo(centroidLayer);
+      }
+
+      if (villagePolygonsMap.size !== 40) {
+        console.warn(`Expected 40 exact-LGD village polygons; loaded ${villagePolygonsMap.size}.`);
+      }
     } catch (err) {
-      console.warn("KMZ boundary loading warning:", err);
+      console.warn("Validated village boundary loading warning:", err);
     }
   }
 
-  /**
-   * Setup UI Controls & Interactive Listeners
-   */
+  /** Setup UI Controls & Interactive Listeners */
   function setupUIListeners() {
     const navToolsMenu = $("nav-tools-menu");
     if (navToolsMenu) {
