@@ -1,5 +1,7 @@
 """Tests for ML susceptibility and rainfall scenario API endpoints."""
 
+from collections import Counter
+
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
@@ -76,6 +78,30 @@ def test_rainfall_scenario_endpoint_baseline() -> None:
         assert r["output_classification"] == "SCENARIO_ADJUSTED_MODELED_RISK"
         assert r["baseline_output_classification"] == "BASELINE_MODELED_SUSCEPTIBILITY"
         assert float(r["susceptibility_delta"]) == 0.0
+
+    scores = [float(row["baseline_susceptibility_0_100"]) for row in payload["records"]]
+    current = Counter(
+        "HIGH" if score >= 60 else "MEDIUM" if score >= 30 else "LOW"
+        for score in scores
+    )
+    assert current == {"HIGH": 23, "MEDIUM": 3, "LOW": 14}
+
+    # Sensitivity comparison only; production thresholds remain unchanged.
+    tighter = Counter(
+        "HIGH" if score >= 70 else "MEDIUM" if score >= 35 else "LOW"
+        for score in scores
+    )
+    stricter = Counter(
+        "HIGH" if score >= 80 else "MEDIUM" if score >= 40 else "LOW"
+        for score in scores
+    )
+    lower_cutoff = Counter(
+        "HIGH" if score >= 50 else "MEDIUM" if score >= 25 else "LOW"
+        for score in scores
+    )
+    assert tighter == {"HIGH": 23, "MEDIUM": 2, "LOW": 15}
+    assert stricter == {"HIGH": 20, "MEDIUM": 5, "LOW": 15}
+    assert lower_cutoff == {"HIGH": 25, "MEDIUM": 1, "LOW": 14}
 
 
 def test_rainfall_scenario_endpoint_extreme() -> None:

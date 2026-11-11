@@ -669,7 +669,7 @@
     <!-- Floating Current Risk Overview Card (Top-Right Below Header) -->
     <section class="gmap-overview-card" id="risk-overview-card" aria-label="District Susceptibility Overview">
       <div class="overview-header">
-        <span class="overview-title">MODELED SCENARIO RISK</span>
+        <span class="overview-title">MODELED TIER COUNTS</span>
         <span class="overview-scope" id="overview-scenario-context">Scenario: Baseline</span>
       </div>
       <div class="overview-counts-row">
@@ -702,69 +702,38 @@
     </section>
 
     <!-- Floating Map Risk Legend (Bottom-Right) -->
-    <div class="gmap-legend-card is-collapsed" id="map-legend-card" aria-label="Susceptibility & Landslide Warning Legend">
+    <div class="gmap-legend-card is-collapsed" id="map-legend-card" aria-label="Map legend and data interpretation">
       <button id="btn-toggle-legend" class="legend-toggle" aria-controls="legend-details" aria-expanded="false" type="button">
         <span>Legend</span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div id="legend-details" class="legend-details">
-      <!-- Section 1: Landslide Susceptibility -->
-      <div class="legend-section-title">LANDSLIDE SUSCEPTIBILITY</div>
+      <div class="legend-section-title">MODELED VILLAGE SUSCEPTIBILITY</div>
       <div class="legend-items-list">
-        <div class="legend-item">
-          <span class="legend-dot dot-high"></span>
-          <span class="legend-label">High — 60 and above</span>
-        </div>
-        <div class="legend-item">
-          <span class="legend-dot dot-medium"></span>
-          <span class="legend-label">Medium — 30 to 59.9</span>
-        </div>
-        <div class="legend-item">
-          <span class="legend-dot dot-low"></span>
-          <span class="legend-label">Low — below 30</span>
-        </div>
+        <div class="legend-item"><span class="legend-dot dot-high"></span><span class="legend-label">High: score 60 and above</span></div>
+        <div class="legend-item"><span class="legend-dot dot-medium"></span><span class="legend-label">Medium: score 30 to 59.9</span></div>
+        <div class="legend-item"><span class="legend-dot dot-low"></span><span class="legend-label">Low: score below 30</span></div>
       </div>
-
-      <div class="legend-divider"></div>
-
-      <!-- Section 2: Landslide Warning -->
-      <div class="legend-section-title">LANDSLIDE WARNING</div>
-      <div class="legend-items-list">
-        <div class="legend-item">
-          <span class="legend-dot dot-warning-pulse"></span>
-          <span class="legend-label"><strong>🔴 Warning</strong> — Predicted possible event</span>
-        </div>
-      </div>
-
-      <div class="legend-divider"></div>
-
-      <!-- Section 3: Evidence -->
-      <div class="legend-section-title">EVIDENCE</div>
-      <div class="legend-items-list">
-        <div class="legend-item">
-          <span class="legend-dot dot-coral"></span>
-          <span class="legend-label">Past Landslide Locations — 772</span>
-        </div>
-        <div class="legend-item">
-          <span class="legend-dot dot-shelter"></span>
-          <span class="legend-label">Shelter locations — 10 DEMO · 0 verified</span>
-        </div>
-      </div>
-
-      <div class="legend-divider"></div>
-
-      <!-- Section 4: Weather -->
-      <div class="legend-section-title">WEATHER</div>
-      <div class="legend-items-list">
-        <div class="legend-item">
-          <span class="legend-dot dot-weather"></span>
-          <span class="legend-label">Current Weather — Open-Meteo</span>
-        </div>
-      </div>
-
-      <!-- Subtext Explanation -->
       <div class="legend-footer-note">
-        Susceptibility shows underlying vulnerability. Warning indicates predicted event conditions.
+        Tiers use a 0-100 model score, not a calibrated event probability. Baseline uses historical terrain, DEM-derived hydrology and rainfall features. Rainfall scenarios are simulations, not forecasts. Current rainfall is not an input.
+      </div>
+      <div class="legend-divider"></div>
+      <div class="legend-section-title">DECISION SUPPORT</div>
+      <div class="legend-items-list">
+        <div class="legend-item"><span class="legend-dot dot-warning-pulse"></span><span class="legend-label"><strong>Rule-based stage</strong>: advisory context only; not an official warning or event prediction</span></div>
+      </div>
+      <div class="legend-divider"></div>
+      <div class="legend-section-title">MAP LAYERS: USE LAYERS TOGGLE</div>
+      <div class="legend-items-list">
+        <div class="legend-item"><span class="legend-dot dot-coral"></span><span class="legend-label">Historical GSI landslide points: 772 records</span></div>
+        <div class="legend-item"><span class="legend-dot dot-village-marker"></span><span class="legend-label">Village label markers: 40 supported villages</span></div>
+        <div class="legend-item"><span class="legend-dot dot-sensor-marker"></span><span class="legend-label">ESP32 sensors: color shows online, stale, offline or no-data status</span></div>
+        <div class="legend-item"><span class="legend-boundary-line"></span><span class="legend-label">Validated village polygon boundaries: 40</span></div>
+        <div class="legend-item"><span class="legend-dot dot-shelter"></span><span class="legend-label">Shelter locations: 10 DEMO / 0 verified</span></div>
+        <div class="legend-item"><span class="legend-dot dot-weather"></span><span class="legend-label">Weather context marker: Open-Meteo</span></div>
+      </div>
+      <div class="legend-footer-note">
+        Historical points are shown at supplied coordinates. 349 fall strictly inside the 40 exact-LGD polygons; 344 more fall inside other Nilgiris KMZ polygons without an exact village join. The remaining 79 are outside the supplied 58-polygon set. No outside point is reassigned or shifted.
       </div>
       </div>
     </div>
@@ -993,6 +962,8 @@
           </div>
         </div>
       </div>
+
+      <p class="detail-score-context" id="detail-score-context">Model score is a relative ranking, not an event probability. Rainfall scenarios are hypothetical.</p>
 
       <!-- Hero Score Box -->
       <div class="hero-score-box">

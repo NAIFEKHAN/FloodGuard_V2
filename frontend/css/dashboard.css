@@ -2049,6 +2049,10 @@ html, body {
 .dot-coral { background: #e11d48; border: 1.5px solid #ffffff; box-shadow: 0 0 2px rgba(0,0,0,0.4); }
 .dot-shelter { background: #059669; border: 1.5px solid #ffffff; box-shadow: 0 0 2px rgba(0,0,0,0.4); }
 .dot-weather { background: #0284c7; border: 1.5px solid #ffffff; box-shadow: 0 0 2px rgba(0,0,0,0.4); }
+.dot-village-marker { background: #0284c7; border: 1.5px solid #ffffff; box-shadow: 0 0 2px rgba(0,0,0,0.4); }
+.dot-sensor-marker { background: linear-gradient(135deg, #15803d 0 25%, #d97706 25% 50%, #64748b 50% 75%, #94a3b8 75%); border: 1.5px solid #ffffff; box-shadow: 0 0 2px rgba(0,0,0,0.4); }
+.legend-boundary-line { width: 13px; height: 9px; border: 2px solid #14532d; border-radius: 2px; flex-shrink: 0; }
+.detail-score-context { margin: 8px 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
 
 .dot-warning-pulse {
   background: #ef4444;
@@ -5853,6 +5857,12 @@ html, body {
   .warn-pill-text {
     font-size: 8.5px;
   }
+}
+
+/* Keep the expanded data legend scrollable so it does not block map controls. */
+.gmap-legend-card.is-expanded {
+  max-height: min(25vh, 220px);
+  overflow-y: auto;
 }
 
 .warning-stage-chip {

@@ -2529,7 +2529,19 @@
     const badgeEl = $("detail-tier-badge");
     if (badgeEl) {
       badgeEl.className = `tier-chip ${tier.className}`;
-      badgeEl.textContent = `${tier.tier} SCENARIO RISK`;
+      badgeEl.textContent = `${tier.tier} MODELED TIER`;
+    }
+
+    const scoreContext = $("detail-score-context");
+    if (scoreContext) {
+      const factor = Number(activeScenarioMeta?.rainfall_factor ?? 1);
+      const evaluatedAt = String(activeScenarioMeta?.provenance?.generated_at || "");
+      const timestamp = evaluatedAt
+        ? ` Evaluated ${evaluatedAt.slice(0, 19).replace("T", " ")} UTC.`
+        : " Evaluation time unavailable.";
+      scoreContext.textContent = factor === 1
+        ? `Baseline modeled susceptibility from historical terrain, DEM-derived hydrology and rainfall features. Score is not a calibrated event probability; current weather is not a model input.${timestamp}`
+        : `Hypothetical Rainfall Scenario (${fmt(factor, 2)}×); this is not a forecast or confirmed future event. Baseline score: ${fmt(baseScore, 1)} / 100.${timestamp}`;
     }
 
     const deltaEl = $("detail-delta-badge");
@@ -3067,7 +3079,7 @@
         boundary.addTo(boundaryLayer);
 
         polygon.bindTooltip(`
-          <strong>${escapeHtml(village.village_name_en)}</strong> - Scenario risk ${fmt(score, 1)} / 100
+          <strong>${escapeHtml(village.village_name_en)}</strong> - Modeled score ${fmt(score, 1)} / 100; tier is not an event probability
         `, { sticky: true, className: "polygon-tooltip" });
         polygon.bindPopup(`
           <div style="font-size:12px;">
