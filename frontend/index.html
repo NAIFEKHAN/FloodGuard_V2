@@ -90,6 +90,11 @@
           <span>Emergency</span>
         </button>
 
+        <a id="btn-soil-moisture" class="nav-action-btn btn-soil-moisture-trigger" href="/soil-moisture" aria-label="Open Soil Moisture Monitoring">
+          <span>🌱 Soil Moisture</span>
+          <small id="nav-soil-sensor-state">Loading sensor</small>
+        </a>
+
         <button id="btn-open-evidence" class="nav-action-btn btn-evidence-trigger" aria-label="Open evidence vault and audit data" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
           <span>Evidence & Audits</span>
@@ -668,6 +673,19 @@
           <span class="count-label">LOW</span>
         </div>
       </div>
+      <section class="bench-sensor-summary" id="bench-sensor-card" aria-label="Live bench sensor">
+        <div class="bench-sensor-header">
+          <h2>LIVE BENCH SENSOR</h2>
+          <span class="bench-sensor-status bench-sensor-no-data" id="bench-sensor-status" role="status" aria-live="polite">Loading</span>
+        </div>
+        <dl class="bench-sensor-details">
+          <div><dt>Sensor</dt><dd id="bench-sensor-id">FG-BENCH-001</dd></div>
+          <div><dt>Type</dt><dd>TEST / BENCH</dd></div>
+          <div><dt>Soil Moisture</dt><dd id="bench-soil-moisture">—</dd></div>
+          <div><dt>Last Reading</dt><dd id="bench-last-reading">Loading sensor inventory…</dd></div>
+          <div><dt>Village</dt><dd>Not assigned</dd></div>
+        </dl>
+      </section>
     </section>
 
     <!-- Floating Map Risk Legend (Bottom-Right) -->

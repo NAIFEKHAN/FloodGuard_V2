@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Live soil-moisture sensor observations and sensor-level monitoring for FloodGuard.">
+  <title>FloodGuard | Soil Moisture Monitoring</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/soil-moisture.css">
+</head>
+<body>
+  <header class="soil-header">
+    <a class="soil-brand" href="/" aria-label="FloodGuard home">
+      <span class="soil-brand-mark" aria-hidden="true">FG</span>
+      <span><strong>FloodGuard</strong><small>Soil Moisture Monitoring</small></span>
+    </a>
+    <div class="soil-header-actions">
+      <label class="sensor-picker" id="sensor-picker-wrap" hidden>
+        <span>Sensor</span>
+        <select id="sensor-picker" aria-label="Select soil moisture sensor"></select>
+      </label>
+      <a class="back-link" href="/">← FloodGuard Map</a>
+    </div>
+  </header>
+
+  <main class="soil-main">
+    <section class="page-intro">
+      <div>
+        <p class="eyebrow">ENVIRONMENTAL SENSOR · LIVE DATA</p>
+        <h1>Soil moisture</h1>
+        <p class="page-subtitle">Observed sensor readings and sensor-level conditions.</p>
+      </div>
+      <p class="refresh-indicator"><span class="refresh-dot" aria-hidden="true"></span>Auto-refresh every 5 seconds</p>
+    </section>
+
+    <section class="alert-banner alert-unavailable" id="alert-banner" aria-live="polite" aria-atomic="true">
+      <span class="alert-icon" aria-hidden="true">●</span>
+      <div>
+        <h2 id="alert-title">Loading sensor status</h2>
+        <p id="alert-message">Waiting for the sensor API.</p>
+      </div>
+      <span class="alert-reading" id="alert-reading">—</span>
+    </section>
+
+    <div class="soil-dashboard-grid">
+      <section class="panel current-panel" aria-labelledby="current-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">CURRENT OBSERVATION</p>
+            <h2 id="current-title">Soil moisture</h2>
+          </div>
+          <span class="status-pill status-no-data" id="sensor-status" role="status">NO DATA</span>
+        </div>
+        <div class="moisture-reading">
+          <span class="moisture-value" id="current-moisture">—</span>
+          <span class="moisture-unit">SOIL MOISTURE</span>
+        </div>
+        <div class="gauge-wrap">
+          <div class="moisture-gauge" id="moisture-gauge" role="progressbar" aria-label="Current soil moisture" aria-valuemin="0" aria-valuemax="100">
+            <span class="gauge-fill" id="gauge-fill"></span>
+          </div>
+          <div class="gauge-labels"><span>0%</span><span>100%</span></div>
+        </div>
+        <p class="current-note" id="current-note">Awaiting sensor data</p>
+        <div class="condition-row">
+          <span>Soil condition</span>
+          <strong id="soil-condition">Awaiting data</strong>
+        </div>
+      </section>
+
+      <section class="panel details-panel" aria-labelledby="details-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">DEVICE & PROVENANCE</p>
+            <h2 id="details-title">Sensor details</h2>
+          </div>
+          <span class="sensor-class" id="sensor-class">—</span>
+        </div>
+        <dl class="details-list">
+          <div><dt>Sensor ID</dt><dd id="detail-sensor-id">FG-BENCH-001</dd></div>
+          <div><dt>Device type</dt><dd id="detail-device-type">—</dd></div>
+          <div><dt>Raw ADC</dt><dd id="detail-raw-value">—</dd></div>
+          <div><dt>Village</dt><dd id="detail-village">Not assigned</dd></div>
+          <div><dt>Coordinates</dt><dd id="detail-coordinates">Not assigned</dd></div>
+          <div><dt>Last reading</dt><dd id="detail-last-reading">—</dd></div>
+          <div><dt>Last update</dt><dd id="detail-last-update">—</dd></div>
+        </dl>
+        <div class="bench-note" id="bench-note">Bench sensor — not assigned to a Nilgiris village.</div>
+      </section>
+
+      <section class="panel calibration-panel" aria-labelledby="calibration-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">DEVICE REFERENCE</p>
+            <h2 id="calibration-title">Bench calibration</h2>
+          </div>
+        </div>
+        <dl class="calibration-values">
+          <div><dt>Dry ADC</dt><dd id="calibration-dry">4095</dd></div>
+          <div><dt>Wet ADC</dt><dd id="calibration-wet">2082</dd></div>
+        </dl>
+        <p class="fine-print" id="calibration-note">Displayed percentage is sensor-relative moisture based on the configured dry/wet calibration. This is not laboratory volumetric water-content calibration.</p>
+      </section>
+
+      <section class="panel alert-explainer" aria-labelledby="sensor-alert-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">OBSERVATION CLASSIFICATION</p>
+            <h2 id="sensor-alert-title">Soil moisture sensor alert</h2>
+          </div>
+          <span class="decision-support-label">Decision support</span>
+        </div>
+        <p id="sensor-alert-message">Awaiting a current sensor reading.</p>
+        <p class="fine-print">Sensor-level environmental observation. FloodGuard decision-support warnings use additional susceptibility and rainfall context. This is not an official government warning.</p>
+        <div class="threshold-legend" aria-label="Sensor alert thresholds">
+          <span><i class="threshold-dot normal-dot"></i>Normal &lt; 60%</span>
+          <span><i class="threshold-dot elevated-dot"></i>Elevated 60–&lt;80%</span>
+          <span><i class="threshold-dot high-dot"></i>High ≥ 80%</span>
+        </div>
+      </section>
+
+      <section class="panel chart-panel" aria-labelledby="trend-title">
+        <div class="panel-heading chart-heading">
+          <div>
+            <p class="eyebrow">OBSERVED READINGS</p>
+            <h2 id="trend-title">Live moisture trend</h2>
+          </div>
+          <span class="chart-count" id="chart-count">Waiting for readings</span>
+        </div>
+        <div class="chart-wrap" id="chart-wrap">
+          <svg id="moisture-chart" viewBox="0 0 900 320" role="img" aria-label="Soil moisture readings over time"></svg>
+          <p class="chart-empty" id="chart-empty">Awaiting sensor data</p>
+        </div>
+        <div class="chart-legend">
+          <span><i class="legend-line reading-line"></i>Sensor reading</span>
+          <span><i class="legend-line elevated-line"></i>Elevated threshold · 60%</span>
+          <span><i class="legend-line high-line"></i>High threshold · 80%</span>
+        </div>
+      </section>
+
+      <section class="panel history-panel" aria-labelledby="history-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">DERIVED FROM REAL READINGS</p>
+            <h2 id="history-title">Alert history</h2>
+          </div>
+          <span class="chart-count">State transitions</span>
+        </div>
+        <p class="fine-print history-note">Historical sensor-level changes only; repeated readings in the same state are not duplicated.</p>
+        <div class="history-list" id="alert-history" aria-live="polite">
+          <p class="history-empty">Awaiting sensor data</p>
+        </div>
+      </section>
+    </div>
+    <footer class="soil-footer">
+      <span>Sensor data refreshes from FloodGuard’s existing sensor API.</span>
+      <span id="api-update-status" role="status">Connecting…</span>
+    </footer>
+  </main>
+  <script src="/assets/js/soil-moisture-alert.js"></script>
+  <script src="/assets/js/soil-moisture.js"></script>
+</body>
+</html>

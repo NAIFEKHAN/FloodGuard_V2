@@ -586,6 +586,30 @@ html, body {
   border-color: #bae6fd;
 }
 
+.btn-soil-moisture-trigger {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  padding: 3px 10px;
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+  text-decoration: none;
+}
+
+.btn-soil-moisture-trigger:hover,
+.btn-soil-moisture-trigger:focus-visible {
+  border-color: #86efac;
+  background: #dcfce7;
+}
+
+.btn-soil-moisture-trigger small {
+  color: #475569;
+  font-size: 8px;
+  font-weight: 700;
+}
+
 .btn-mobile-nav-toggle {
   display: none;
   background: var(--bg-card-subtle);
@@ -5973,3 +5997,74 @@ html, body {
     flex-direction: column;
   }
 }
+
+  .bench-sensor-summary {
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .bench-sensor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .bench-sensor-header h2 {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+  }
+
+  .bench-sensor-status {
+    flex: 0 0 auto;
+    padding: 3px 6px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 800;
+  }
+
+  .bench-sensor-online {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .bench-sensor-stale,
+  .bench-sensor-no-data {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .bench-sensor-offline {
+    background: #e2e8f0;
+    color: #475569;
+  }
+
+  .bench-sensor-details {
+    display: grid;
+    gap: 5px;
+    margin: 8px 0 0;
+  }
+
+  .bench-sensor-details > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  .bench-sensor-details dt {
+    color: var(--text-muted);
+  }
+
+  .bench-sensor-details dd {
+    margin: 0;
+    color: var(--text-main);
+    font-weight: 700;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }

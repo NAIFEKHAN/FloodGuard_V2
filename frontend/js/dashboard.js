@@ -258,18 +258,84 @@
 
   function formatElapsed(ageSeconds) {
     if (ageSeconds === null || ageSeconds === undefined) return "time unavailable";
-    const minutes = Math.floor(Number(ageSeconds) / 60);
-    if (minutes < 1) return "less than 1 min ago";
+    const seconds = Math.max(0, Math.floor(Number(ageSeconds)));
+    if (!Number.isFinite(seconds)) return "time unavailable";
+    if (seconds < 60) return `${seconds} sec ago`;
+    const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes} min ago`;
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours} hr ago`;
     return `${Math.floor(hours / 24)} days ago`;
   }
 
+  function renderBenchSensor(records, unavailable = false) {
+    const statusElement = $("bench-sensor-status");
+    const moistureElement = $("bench-soil-moisture");
+    const lastReadingElement = $("bench-last-reading");
+    const navStateElement = $("nav-soil-sensor-state");
+    if (!statusElement || !moistureElement || !lastReadingElement) return;
+
+    if (unavailable) {
+      statusElement.textContent = "UNAVAILABLE";
+      statusElement.className = "bench-sensor-status bench-sensor-offline";
+      moistureElement.textContent = "Unavailable";
+      lastReadingElement.textContent = "Sensor inventory unavailable";
+      if (navStateElement) navStateElement.textContent = "Data unavailable";
+      return;
+    }
+
+    const sensor = records.find(record =>
+      record.sensor_id === "FG-BENCH-001" &&
+      record.is_test === true &&
+      record.village_lgd_code == null
+    );
+    if (!sensor) {
+      statusElement.textContent = "NOT REGISTERED";
+      statusElement.className = "bench-sensor-status bench-sensor-no-data";
+      moistureElement.textContent = "—";
+      lastReadingElement.textContent = "No reading received";
+      if (navStateElement) navStateElement.textContent = "NO DATA";
+      return;
+    }
+
+    const latest = sensor.latest || null;
+    const moisture = sensor.soil_moisture_percent ?? latest?.soil_moisture_percent;
+    const status = ["online", "stale", "offline"].includes(sensor.status)
+      ? sensor.status
+      : "no-data";
+    statusElement.textContent = status === "no-data" ? "NO DATA" : status.toUpperCase();
+    statusElement.className = `bench-sensor-status bench-sensor-${status}`;
+    moistureElement.textContent = typeof moisture === "number" && Number.isFinite(moisture)
+      ? `${fmt(moisture, 1)}%`
+      : "—";
+    lastReadingElement.textContent = latest
+      ? formatElapsed(sensor.age_seconds)
+      : "No reading received";
+    if (navStateElement) {
+      const hasCurrentReading = status === "online" &&
+        typeof moisture === "number" && Number.isFinite(moisture);
+      const alertState = hasCurrentReading
+        ? moisture >= 80 ? "HIGH" : "ONLINE"
+        : status === "no-data" ? "NO DATA" : status.toUpperCase();
+      navStateElement.textContent = hasCurrentReading
+        ? `${alertState} · ${fmt(moisture, 1)}%`
+        : alertState;
+    }
+  }
+
   async function refreshSensorLayer() {
-    const response = await api("/api/sensors");
+    let response;
+    try {
+      response = await api("/api/sensors");
+    } catch (error) {
+      renderBenchSensor([], true);
+      throw error;
+    }
+    const sensors = Array.isArray(response.records) ? response.records : [];
+    renderBenchSensor(sensors);
     sensorLayer.clearLayers();
-    for (const sensor of response.records || []) {
+    for (const sensor of sensors) {
+      if (sensor.sensor_id === "FG-BENCH-001") continue;
       if (
         sensor.latitude === null ||
         sensor.latitude === undefined ||

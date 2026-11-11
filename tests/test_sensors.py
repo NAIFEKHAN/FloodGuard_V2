@@ -85,6 +85,17 @@ def test_sensor_registration_validates_lgd_and_duplicate_id(sensor_client: TestC
     assert unknown_village.status_code == 404
 
 
+def test_soil_moisture_dashboard_route_serves_page_and_assets(
+    sensor_client: TestClient,
+) -> None:
+    page = sensor_client.get("/soil-moisture")
+    assert page.status_code == 200
+    assert "FloodGuard | Soil Moisture Monitoring" in page.text
+    assert 'href="/"' in page.text
+    assert sensor_client.get("/assets/css/soil-moisture.css").status_code == 200
+    assert sensor_client.get("/assets/js/soil-moisture.js").status_code == 200
+
+
 def test_bench_sensor_registers_without_village_and_is_labelled(sensor_client: TestClient) -> None:
     response = sensor_client.post(
         "/api/sensors",

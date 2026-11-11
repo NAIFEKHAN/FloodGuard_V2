@@ -103,6 +103,11 @@ def dashboard() -> FileResponse:
     return FileResponse(FRONTEND / "index.html")
 
 
+@app.get("/soil-moisture", include_in_schema=False)
+def soil_moisture_dashboard() -> FileResponse:
+    return FileResponse(FRONTEND / "soil-moisture.html")
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "FloodGuard API"}
