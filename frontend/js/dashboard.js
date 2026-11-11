@@ -2533,6 +2533,19 @@
     }
 
     const scoreContext = $("detail-score-context");
+    const isBaselineView = Number(activeScenarioMeta?.rainfall_factor ?? 1) === 1;
+    const impactTitle = $("detail-impact-title");
+    if (impactTitle) {
+      impactTitle.textContent = isBaselineView
+        ? "BASELINE MODELED SUSCEPTIBILITY"
+        : "HYPOTHETICAL RAINFALL SCENARIO";
+    }
+    const activeScoreLabel = $("detail-active-score-label");
+    if (activeScoreLabel) {
+      activeScoreLabel.textContent = isBaselineView
+        ? "Baseline score"
+        : "Hypothetical scenario score";
+    }
     if (scoreContext) {
       const factor = Number(activeScenarioMeta?.rainfall_factor ?? 1);
       const evaluatedAt = String(activeScenarioMeta?.provenance?.generated_at || "");
@@ -2588,7 +2601,9 @@
 
     const deltaNoteEl = $("detail-delta-note");
     if (deltaNoteEl) {
-      deltaNoteEl.textContent = delta.isZero ? "Historical baseline expectation" : "vs Historical Baseline";
+      deltaNoteEl.textContent = isBaselineView
+        ? "Baseline output; no rainfall adjustment"
+        : "Hypothetical input change vs historical baseline";
     }
 
     // 4 Component Breakdown
@@ -2849,6 +2864,9 @@
       if (polygon) {
         const score = Number(village.scenario_susceptibility_0_100 ?? village.ml_susceptibility_0_100);
         const tier = getTierInfo(score);
+        const activeScoreLabel = Number(activeScenarioMeta?.rainfall_factor ?? 1) === 1
+          ? "Baseline modeled susceptibility"
+          : "Hypothetical rainfall scenario score";
         const delta = formatDelta(village.susceptibility_delta);
         const warnState = getVillageWarningState(village);
 
@@ -2897,7 +2915,7 @@
             <strong>LGD Code:</strong> ${escapeHtml(village.village_lgd_code)}<br>
             <strong>PU Status:</strong> ${escapeHtml(village.pu_status)}<br>
             <strong>Baseline modeled susceptibility:</strong> ${fmt(village.baseline_susceptibility_0_100 ?? village.ml_susceptibility_0_100, 1)} / 100<br>
-            <strong>Scenario-adjusted modeled risk:</strong> <strong>${fmt(score, 1)} / 100</strong> (${tier.tier})<br>
+            <strong>${activeScoreLabel}:</strong> <strong>${fmt(score, 1)} / 100</strong> (${tier.tier})<br>
             <strong>Decision-support warning:</strong> <strong style="color:${warningColor}">${escapeHtml(warnState.statusText)}</strong><br>
             <strong>Scenario Delta:</strong> <span class="${delta.className}">${delta.text}</span><br>
             <strong>Mean Slope:</strong> ${fmt(village.slope_mean_deg, 1)}°<br>
@@ -3059,6 +3077,9 @@
 
         const score = Number(village.scenario_susceptibility_0_100 ?? village.ml_susceptibility_0_100);
         const tier = getTierInfo(score);
+        const activeScoreLabel = Number(activeScenarioMeta?.rainfall_factor ?? 1) === 1
+          ? "Baseline modeled susceptibility"
+          : "Hypothetical rainfall scenario score";
         const polygon = L.geoJSON(feature, {
           style: {
             stroke: false,
@@ -3085,8 +3106,8 @@
           <div style="font-size:12px;">
             <strong style="color:#14532d;font-size:13px;">${escapeHtml(village.village_name_en)}</strong><br>
             <strong>LGD Code:</strong> ${escapeHtml(village.village_lgd_code)}<br>
-            <strong>Baseline modeled susceptibility:</strong> ${fmt(village.baseline_susceptibility_0_100 ?? village.ml_susceptibility_0_100, 1)} / 100<br>
-            <strong>Scenario-adjusted modeled risk:</strong> ${fmt(score, 1)} / 100<br>
+            <strong>${activeScoreLabel}:</strong> ${fmt(score, 1)} / 100 (${tier.tier})<br>
+            <strong>Baseline reference:</strong> ${fmt(village.baseline_susceptibility_0_100 ?? village.ml_susceptibility_0_100, 1)} / 100<br>
             <strong>Mean Slope:</strong> ${fmt(village.slope_mean_deg, 1)} deg<br>
             <small style="color:#166534;font-weight:600;">Click for full village details</small>
           </div>
