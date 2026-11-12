@@ -1141,6 +1141,10 @@
     // Place shelter markers above vector overlays such as high-risk polygons.
     const shelterMarkersPane = map.createPane("shelterMarkersPane");
     shelterMarkersPane.style.zIndex = "650";
+    const evacuationRoutePane = map.createPane("evacuationRoutePane");
+    evacuationRoutePane.style.zIndex = "640";
+    const evacuationOriginPane = map.createPane("evacuationOriginPane");
+    evacuationOriginPane.style.zIndex = "670";
 
     satelliteBaseLayer = L.tileLayer(
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -1406,6 +1410,7 @@
     // Map Click Listener for "Select Location on Map" mode
     map.on("click", e => {
       if (isPickingOriginOnMap) {
+        if (e.originalEvent) L.DomEvent.stop(e.originalEvent);
         setUserOrigin(e.latlng.lat, e.latlng.lng, `Custom Map Point (${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)})`, true);
         exitMapPickingMode();
         showToast("Evacuation origin set from map location", false, null, 1800);
@@ -1460,6 +1465,7 @@
     // Update Origin Marker on Map
     originMarkerLayer.clearLayers();
     const originMarker = L.circleMarker([userOrigin.lat, userOrigin.lng], {
+      pane: "evacuationOriginPane",
       radius: 7.5,
       color: "#ffffff",
       weight: 2.5,
@@ -1785,18 +1791,56 @@
     const destLng = target.longitude;
 
     let routeDrawn = false;
+    let routeCoordinates = null;
+    let routeLine = null;
+    const routeStatus = $("route-network-status");
 
     // Try OSRM public road routing API for realistic road network polyline
     try {
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson`;
-      const res = await fetch(osrmUrl, { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(osrmUrl, { signal: AbortSignal.timeout(5000) });
       if (res.ok) {
         const json = await res.json();
-        if (json.routes && json.routes.length > 0) {
+        if (json.code === "Ok" && json.routes && json.routes.length > 0) {
           const route = json.routes[0];
-          const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+          const rawCoordinates = route.geometry?.coordinates;
+          const validGeometry = route.geometry?.type === "LineString"
+            && Array.isArray(rawCoordinates)
+            && rawCoordinates.length >= 2
+            && rawCoordinates.every(point => Array.isArray(point)
+              && point.length >= 2
+              && Number.isFinite(Number(point[0]))
+              && Number.isFinite(Number(point[1]))
+              && Math.abs(Number(point[0])) <= 180
+              && Math.abs(Number(point[1])) <= 90);
+          if (!validGeometry
+            || !Number.isFinite(Number(route.distance))
+            || Number(route.distance) <= 0
+            || !Number.isFinite(Number(route.duration))
+            || Number(route.duration) < 0) {
+            throw new Error("OSRM did not return valid road geometry and measurements");
+          }
+          // GeoJSON positions are [longitude, latitude]; Leaflet uses [latitude, longitude].
+          routeCoordinates = rawCoordinates.map(([lng, lat]) => [Number(lat), Number(lng)]);
+          const waypoints = json.waypoints;
+          const validWaypoints = Array.isArray(waypoints)
+            && waypoints.length >= 2
+            && waypoints.slice(0, 2).every(waypoint => Array.isArray(waypoint.location)
+              && Number.isFinite(Number(waypoint.location[0]))
+              && Number.isFinite(Number(waypoint.location[1]))
+              && Math.abs(Number(waypoint.location[0])) <= 180
+              && Math.abs(Number(waypoint.location[1])) <= 90);
+          if (!validWaypoints) throw new Error("OSRM response did not include both snapped endpoints");
+          const snappedOrigin = [Number(waypoints[0].location[1]), Number(waypoints[0].location[0])];
+          const snappedShelter = [Number(waypoints[1].location[1]), Number(waypoints[1].location[0])];
+          const startMismatchM = haversineDistKm(routeCoordinates[0][0], routeCoordinates[0][1], snappedOrigin[0], snappedOrigin[1]) * 1000;
+          const endMismatchM = haversineDistKm(routeCoordinates.at(-1)[0], routeCoordinates.at(-1)[1], snappedShelter[0], snappedShelter[1]) * 1000;
+          if (startMismatchM > 50 || endMismatchM > 50) {
+            throw new Error("OSRM route geometry does not match the requested origin-to-shelter direction");
+          }
 
-          const polyline = L.polyline(coords, {
+          routeLine = L.polyline(routeCoordinates, {
+            pane: "evacuationRoutePane",
             color: "#0284c7",
             weight: 5.0,
             opacity: 0.9,
@@ -1804,7 +1848,7 @@
             lineJoin: "round"
           });
 
-          polyline.bindPopup(`
+          routeLine.bindPopup(`
             <div style="font-size:12px;">
               <strong style="color:#0284c7;">🚗 Road Evacuation Route</strong><br>
               <strong>To:</strong> ${escapeHtml(target.shelter_name)}<br>
@@ -1814,7 +1858,7 @@
             </div>
           `);
 
-          polyline.addTo(routeLayer);
+          routeLine.addTo(routeLayer);
           routeDrawn = true;
 
           // Update dist label
@@ -1837,47 +1881,81 @@
         }
       }
     } catch (err) {
-      console.info("OSRM road routing fallback to direct line:", err.message);
+      console.info("OSRM road route unavailable:", err.message);
     }
 
-    // Direct Distance Fallback if OSRM unavailable or offline
-    if (!routeDrawn) {
-      const directPolyline = L.polyline([[originLat, originLng], [destLat, destLng]], {
-        color: "#0284c7",
-        weight: 4.0,
-        dashArray: "6, 8",
-        opacity: 0.85
-      });
-      directPolyline.bindPopup(`
-        <div style="font-size:12px;">
-          <strong style="color:#0284c7;">Evacuation Route (Direct Distance)</strong><br>
-          <strong>To:</strong> ${escapeHtml(target.shelter_name)}<br>
-          <strong>Direct Distance:</strong> ${fmt(haversineDistKm(originLat, originLng, destLat, destLng), 1)} km<br>
-          <small style="color:#64748b;">Direct line representation (road network fallback)</small>
-        </div>
-      `);
-      directPolyline.addTo(routeLayer);
-
-      const distType = $("route-dist-type");
-      if (distType) distType.textContent = "Direct Distance (Road routing unavailable)";
-
-      const routeStatus = $("route-network-status");
+    if (!routeDrawn || !routeCoordinates) {
       if (routeStatus) {
-        routeStatus.textContent = "Direct Line Fallback";
-        routeStatus.style.background = "#fef3c7";
-        routeStatus.style.color = "#92400e";
+        routeStatus.textContent = "Road Route Unavailable";
+        routeStatus.style.background = "#fef2f2";
+        routeStatus.style.color = "#b91c1c";
       }
-
+      const distType = $("route-dist-type");
+      if (distType) distType.textContent = "Road route unavailable";
+      const distVal = $("route-dist-val");
+      if (distVal) distVal.textContent = "—";
+      const driveTime = $("route-drive-time");
+      if (driveTime) driveTime.textContent = "—";
+      const walkTime = $("route-walk-time");
+      if (walkTime) walkTime.textContent = "—";
       const ctxRoutingMode = $("ctx-routing-mode");
-      if (ctxRoutingMode) ctxRoutingMode.textContent = "Direct Distance (Fallback)";
-
-      showToast("Road routing unavailable — showing direct distance only", false, null, 2500);
+      if (ctxRoutingMode) ctxRoutingMode.textContent = "Road route unavailable";
+      const unavailableClearButton = $("btn-clear-route");
+      if (unavailableClearButton) unavailableClearButton.style.display = "none";
+      const unavailableRouteLabel = $("btn-draw-route-label");
+      if (unavailableRouteLabel) unavailableRouteLabel.textContent = "Recalculate Route";
+      showToast("No valid road route is available for the selected origin and shelter.", true, null, 3500);
+      return;
     }
 
-    // Fit map bounds to view whole route
-    const bounds = L.latLngBounds([[originLat, originLng], [destLat, destLng]]);
-    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 14 });
+    const routeStart = routeCoordinates[0];
+    const routeEnd = routeCoordinates[routeCoordinates.length - 1];
+    const originSnapMeters = haversineDistKm(originLat, originLng, routeStart[0], routeStart[1]) * 1000;
+    const shelterSnapMeters = haversineDistKm(destLat, destLng, routeEnd[0], routeEnd[1]) * 1000;
+    const snapNotes = [];
+    if (originSnapMeters > 20) {
+      snapNotes.push("origin snapped about " + Math.round(originSnapMeters) + " m to road");
+      L.polyline([[originLat, originLng], routeStart], {
+        pane: "evacuationRoutePane", color: "#d97706", weight: 3,
+        dashArray: "5, 6", interactive: false
+      }).addTo(routeLayer);
+    }
+    if (shelterSnapMeters > 20) {
+      snapNotes.push("shelter snapped about " + Math.round(shelterSnapMeters) + " m to road");
+      L.polyline([routeEnd, [destLat, destLng]], {
+        pane: "evacuationRoutePane", color: "#d97706", weight: 3,
+        dashArray: "5, 6", interactive: false
+      }).addTo(routeLayer);
+    }
+    if (snapNotes.length) {
+      const snappedText = "OSRM road endpoints are snapped; dashed connectors show exact selected points (" + snapNotes.join("; ") + ").";
+      routeStatus.textContent = "OSRM · endpoints snapped";
+      routeStatus.style.background = "#fef3c7";
+      routeStatus.style.color = "#92400e";
+      const distType = $("route-dist-type");
+      if (distType) distType.textContent = "OSRM Road Network · endpoints snapped";
+      routeLine.bindTooltip(snappedText, { sticky: true });
+    }
 
+    // Fit the full road geometry and selected endpoints, with extra space where
+    // the shelter drawer overlays the map.
+    const bounds = L.latLngBounds(routeCoordinates);
+    bounds.extend([originLat, originLng]);
+    bounds.extend([destLat, destLng]);
+    const panel = $("shelter-panel");
+    const panelVisible = panel && getComputedStyle(panel).display !== "none";
+    const mapSize = map.getSize();
+    const paddingTopLeft = [24, 24];
+    const paddingBottomRight = [24, 24];
+    if (panelVisible) {
+      const panelRect = panel.getBoundingClientRect();
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        paddingBottomRight[1] = Math.min(Math.ceil(panelRect.height + 20), Math.floor(mapSize.y * 0.75));
+      } else {
+        paddingBottomRight[0] = Math.min(Math.ceil(panelRect.width + 20), Math.floor(mapSize.x * 0.65));
+      }
+    }
+    map.fitBounds(bounds, { paddingTopLeft, paddingBottomRight, maxZoom: 14 });
     // Show Clear Route button
     const btnClear = $("btn-clear-route");
     if (btnClear) btnClear.style.display = "inline-flex";
@@ -1918,6 +1996,9 @@
    * Enter Map Location Picker Mode
    */
   function enterMapPickingMode() {
+    if (isPickingOriginOnMap) return;
+    closeAllPanels(null);
+    if (map) map.closePopup();
     isPickingOriginOnMap = true;
     const banner = $("map-picker-banner");
     if (banner) banner.style.display = "flex";

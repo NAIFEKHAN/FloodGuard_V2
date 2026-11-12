@@ -115,6 +115,12 @@ html, body {
   cursor: crosshair !important;
 }
 
+/* While choosing an evacuation point, let map clicks pass through every
+   interactive polygon and marker so the map receives the exact clicked point. */
+#map.map-picking-active .leaflet-interactive {
+  pointer-events: none !important;
+}
+
 /* Leaflet Container Overrides */
 .leaflet-container {
   background: #f1f5f9 !important;

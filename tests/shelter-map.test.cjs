@@ -30,3 +30,19 @@ test("overview counts and sensor details keep aligned responsive columns", () =>
   assert.match(css, /\.bench-sensor-details > div\s*\{[^}]*display:\s*grid/s);
   assert.match(css, /@media \(max-width: 768px\)\s*\{[^}]*\.gmap-overview-card/s);
 });
+
+test("origin picker gives map clicks priority and restores layer interaction on exit", () => {
+  assert.match(css, /#map\.map-picking-active \.leaflet-interactive\s*\{\s*pointer-events:\s*none\s*!important;/);
+  assert.match(js, /function enterMapPickingMode\(\)\s*\{\s*if \(isPickingOriginOnMap\) return;\s*closeAllPanels\(null\);\s*if \(map\) map\.closePopup\(\);/);
+  assert.match(js, /function exitMapPickingMode\(\)[\s\S]*?classList\.remove\("map-picking-active"\)/);
+  assert.match(js, /setUserOrigin\(e\.latlng\.lat, e\.latlng\.lng/);
+});
+
+test("road route uses validated OSRM geometry and reports unavailable instead of drawing a straight line", () => {
+  assert.match(js, /driving\/\$\{originLng\},\$\{originLat\};\$\{destLng\},\$\{destLat\}/);
+  assert.match(js, /rawCoordinates\.map\(\(\[lng, lat\]\) => \[Number\(lat\), Number\(lng\)\]\)/);
+  assert.match(js, /routeCoordinates\.at\(-1\)/);
+  assert.match(js, /map\.fitBounds\(bounds, \{ paddingTopLeft, paddingBottomRight, maxZoom: 14 \}\)/);
+  assert.match(js, /No valid road route is available for the selected origin and shelter/);
+  assert.doesNotMatch(js, /Direct line representation \(road network fallback\)/);
+});
