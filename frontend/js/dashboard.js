@@ -1138,6 +1138,10 @@
       attributionControl: true
     });
 
+    // Place shelter markers above vector overlays such as high-risk polygons.
+    const shelterMarkersPane = map.createPane("shelterMarkersPane");
+    shelterMarkersPane.style.zIndex = "650";
+
     satelliteBaseLayer = L.tileLayer(
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       {
@@ -1569,6 +1573,7 @@
 
     DEMO_DESIGNATED_SHELTERS.forEach(shelter => {
       const marker = L.circleMarker([shelter.latitude, shelter.longitude], {
+        pane: "shelterMarkersPane",
         radius: 6.5,
         color: "#ffffff",
         weight: 2.0,
@@ -1746,6 +1751,22 @@
     }
 
     renderEmergencyPanel();
+  }
+
+  function locateSelectedShelterOnMap() {
+    const shelter = selectedShelter;
+    const marker = shelter && shelterMarkersMap.get(shelter.shelter_id);
+    if (!shelter || !marker || !map) return;
+
+    closeAllPanels(null);
+    if (!map.hasLayer(shelterLayer)) map.addLayer(shelterLayer);
+    const shelterToggle = $("toggle-shelters");
+    if (shelterToggle) shelterToggle.checked = true;
+
+    map.invalidateSize({ pan: false });
+    map.flyTo([shelter.latitude, shelter.longitude], Math.max(map.getZoom(), 15), { duration: 0.75 });
+    marker.bringToFront();
+    marker.openPopup();
   }
 
   /**
@@ -3306,6 +3327,8 @@
 
     if (btnToggleShelters) btnToggleShelters.onclick = toggleSheltersHandler;
     if (btnCloseShelters) btnCloseShelters.onclick = () => closeAllPanels(null);
+    const btnLocateShelter = $("btn-locate-shelter");
+    if (btnLocateShelter) btnLocateShelter.onclick = locateSelectedShelterOnMap;
 
     // Live Weather Panel Toggles & Actions
     const btnToggleWeather = $("btn-toggle-weather");

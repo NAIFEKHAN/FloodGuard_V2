@@ -6331,3 +6331,95 @@ textarea {
   .warn-pill-text { font-size: 10px; }
   .warn-pill-mode { font-size: 9px; }
 }
+
+/* Evacuation shelter map action */
+.btn-locate-shelter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid #166534;
+  border-radius: var(--radius-sm);
+  background: #166534;
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-locate-shelter:hover { background: #14532d; }
+.btn-locate-shelter:focus-visible { outline: 3px solid rgba(22, 101, 52, 0.35); outline-offset: 2px; }
+
+/* Keep tier counts and sensor metadata aligned within the floating overview card. */
+.gmap-overview-card {
+  width: 278px;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+}
+
+.overview-header {
+  align-items: center;
+  gap: 8px;
+}
+
+.overview-title { min-width: 0; }
+.overview-scope { flex: 0 0 auto; white-space: nowrap; }
+
+.overview-counts-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 7px;
+}
+
+.count-item {
+  min-width: 0;
+  box-sizing: border-box;
+  justify-content: center;
+}
+
+.count-label { white-space: nowrap; }
+.bench-sensor-header { min-width: 0; }
+.bench-sensor-header h2 { min-width: 0; }
+
+.bench-sensor-details > div {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.8fr) minmax(0, 1.2fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.bench-sensor-details dt { min-width: 0; }
+.bench-sensor-details dd { min-width: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 768px) {
+  .gmap-overview-card { width: 216px; }
+  .overview-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+    gap: 4px;
+  }
+  .overview-scope {
+    display: inline-block;
+    justify-self: start;
+    max-width: 100%;
+    white-space: normal;
+  }
+  .overview-counts-row { gap: 5px; }
+  .count-item { padding-inline: 2px; }
+  .count-label { font-size: 9px; }
+  .bench-sensor-details > div { grid-template-columns: minmax(76px, 0.8fr) minmax(0, 1.2fr); }
+}
+
+@media (max-width: 390px) {
+  .gmap-overview-card { width: 208px; }
+  .overview-title { font-size: 12px; }
+  .overview-scope { font-size: 9px; }
+  .bench-sensor-header h2 { font-size: 9px; }
+}
